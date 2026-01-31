@@ -22,14 +22,14 @@ module Ralph
     end
 
     def call(prompt, iteration_start:)
-      snapshot_before = State.capture_file_snapshot
+      snapshot_before = Storage::State.capture_file_snapshot
 
       result, exit_code = execute_agent(prompt, iteration_start)
       combined_output = "#{result.stdout_text}\n#{result.stderr_text}"
       iteration_duration = Helpers.now_ms - iteration_start
 
-      snapshot_after = State.capture_file_snapshot
-      files_modified = State.modified_files_since_snapshot(snapshot_before, snapshot_after)
+      snapshot_after = Storage::State.capture_file_snapshot
+      files_modified = Storage::State.modified_files_since_snapshot(snapshot_before, snapshot_after)
       
       tool_counts = result.tool_counts.is_a?(Hash) ? result.tool_counts : result.tool_counts.to_h
       

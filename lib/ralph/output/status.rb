@@ -12,9 +12,9 @@ module Ralph
       end
 
       def call
-        state = State.load_state
-        history = State.load_history
-        context = State.load_context
+        state = Storage::State.load_state
+        history = Storage::History.load_history
+        context = Storage::Context.load_context
         show_tasks = @options[:tasks_mode] || state&.tasks_mode
 
         print_header
@@ -77,9 +77,9 @@ module Ralph
         end
 
         def print_tasks
-          if File.exist?(State.tasks_path)
+          if File.exist?(Storage::Tasks.tasks_path)
             begin
-              tasks_content = File.read(State.tasks_path)
+              tasks_content = File.read(Storage::Tasks.tasks_path)
               tasks = Tasks.parse(tasks_content)
               print_current_tasks(tasks)
             rescue StandardError

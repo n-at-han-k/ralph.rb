@@ -30,7 +30,7 @@ module Ralph
           build_env: lambda { |options|
             env = ENV.to_h.dup
             if options[:filter_plugins] || options[:allow_all_permissions]
-              env["OPENCODE_CONFIG"] = State.ensure_ralph_config(
+              env["OPENCODE_CONFIG"] = Storage::State.ensure_ralph_config(
                 filter_plugins: options[:filter_plugins],
                 allow_all_permissions: options[:allow_all_permissions]
               )

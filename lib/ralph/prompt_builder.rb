@@ -5,7 +5,7 @@ module Ralph
     module_function
 
     def build(state, _agent)
-      context = State.load_context
+      context = Storage::Context.load_context
       context_section = if context
         <<~SECTION
 
@@ -80,7 +80,7 @@ module Ralph
     end
 
     def build_tasks_section(state)
-      tasks_path = State.tasks_path
+      tasks_path = Storage::Tasks.tasks_path
       unless File.exist?(tasks_path)
         return <<~SECTION
 

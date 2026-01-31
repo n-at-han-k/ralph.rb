@@ -37,9 +37,9 @@ module Ralph
       @current_pid        = nil
       @stopping           = false
 
-      State.load_state.then do |existing_state|
+      Storage::State.load_state.then do |existing_state|
         if existing_state&.active
-          Output::ActiveLoopError.call(iteration: existing_state.iteration, started_at: existing_state.started_at, state_path: State.state_path)
+          Output::ActiveLoopError.call(iteration: existing_state.iteration, started_at: existing_state.started_at, state_path: Storage::State.state_path)
           exit 1
         else
           @agent_config = resolve_agent!(agent_type)
@@ -81,16 +81,16 @@ module Ralph
             model: @model,
             agent: @agent_type
 
-          ).tap { State.save_state _1 }
+          ).tap { Storage::State.save_state _1 }
 
 
-          if @tasks_mode && !File.exist?(State.tasks_path)
-            FileUtils.mkdir_p(State.state_dir)
-            File.write(State.tasks_path, "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n")
-            Output::TasksFileCreated.call(path: State.tasks_path)
+          if @tasks_mode && !File.exist?(Storage::Tasks.tasks_path)
+            FileUtils.mkdir_p(Storage::State.state_dir)
+            File.write(Storage::Tasks.tasks_path, "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n")
+            Output::TasksFileCreated.call(path: Storage::Tasks.tasks_path)
           end
 
-          @history = RalphHistory.empty.tap { State.save_history _1 }
+          @history = RalphHistory.empty.tap { Storage::History.save_history _1 }
 
           Output::ConfigSummary.call(
             prompt: @prompt,
@@ -136,7 +136,7 @@ module Ralph
               # process may have exited
             end
           end
-          State.clear_state
+          Storage::State.clear_state
           $stderr.puts "Loop cancelled."
           exit 0
         end
@@ -166,19 +166,19 @@ module Ralph
         return false unless @max_iterations > 0 && @state.iteration > @max_iterations
 
         Output::MaxIterationsReached.call(max_iterations: @max_iterations, total_duration_ms: @history.total_duration_ms)
-        State.clear_state
+        Storage::State.clear_state
         true
       end
 
       def advance_iteration
         @state.iteration += 1
-        State.save_state(@state)
+        Storage::State.save_state(@state)
       end
 
       # ---------- Single iteration ----------
 
       def run_iteration
-        context_at_start = State.load_context
+        context_at_start = Storage::Context.load_context
         iteration_start  = Helpers.now_ms
 
         # Build prompt for this iteration
@@ -236,7 +236,7 @@ module Ralph
         @history.iterations << iter_record
         @history.total_duration_ms += result.duration_ms
         update_struggle_indicators(result.files_modified, result.duration_ms, result.errors)
-        State.save_history(@history)
+        Storage::History.save_history(@history)
       end
 
       def update_struggle_indicators(files_modified, iteration_duration, errors)
@@ -280,7 +280,7 @@ module Ralph
         return unless @agent_config.type == :opencode && Helpers.detect_placeholder_plugin_error(combined_output)
 
         Output::PluginError.call
-        State.clear_state
+        Storage::State.clear_state
         exit 1
       end
 
@@ -309,16 +309,16 @@ module Ralph
           iteration: @state.iteration,
           total_duration_ms: @history.total_duration_ms
         )
-        State.clear_state
-        State.clear_history
-        State.clear_context
+        Storage::State.clear_state
+        Storage::History.clear_history
+        Storage::Context.clear_context
         :break
       end
 
       def consume_context(context_at_start)
         if context_at_start
           Output::ContextConsumed.call
-          State.clear_context
+          Storage::Context.clear_context
         end
       end
 
@@ -360,7 +360,7 @@ module Ralph
         )
         @history.iterations << error_record
         @history.total_duration_ms += iteration_duration
-        State.save_history(@history)
+        Storage::History.save_history(@history)
 
         advance_iteration
         sleep 2

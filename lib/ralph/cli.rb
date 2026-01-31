@@ -214,7 +214,7 @@ module Ralph
 
     rescue StandardError => e
       $stderr.puts "Fatal error: #{e}"
-      State.clear_state
+      Storage::State.clear_state
       exit 1
 
     end
@@ -231,13 +231,14 @@ module Ralph
         Storage::Context.append_context(new_entry)
 
         puts "✅ Context added for next iteration"
-        puts "   File: #{State.context_path}"
+        puts "   File: #{Storage::Context.context_path}"
 
-        state = State.load_state
-        if state&.active
-          puts "   Will be picked up in iteration #{state.iteration + 1}"
-        else
-          puts "   Will be used when loop starts"
+        Storage::State.load_state.then do |state|
+          if state&.active
+            puts "   Will be picked up in iteration #{state.iteration + 1}"
+          else
+            puts "   Will be used when loop starts"
+          end
         end
       end
 
