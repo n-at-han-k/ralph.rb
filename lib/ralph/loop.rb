@@ -1,13 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "helpers"
-require_relative "agents"
-require_relative "state"
-require_relative "tasks"
-require_relative "prompt_builder"
-require_relative "stream_processor"
-require_relative "iteration"
-
 module Ralph
 
   class Loop

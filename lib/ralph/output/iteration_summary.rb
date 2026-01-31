@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../helpers"
-
 module Ralph
   module Output
     class IterationSummary

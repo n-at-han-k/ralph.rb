@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require "open3"
-require_relative "helpers"
-
 module Ralph
   module StreamProcessor
     module_function

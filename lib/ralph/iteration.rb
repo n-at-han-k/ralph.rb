@@ -1,9 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "helpers"
-require_relative "stream_processor"
-require_relative "state"
-
 module Ralph
   # Result object for a single iteration execution
   IterationResult = Struct.new(

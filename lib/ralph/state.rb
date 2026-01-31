@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "storage"
-
 # Backward compatibility wrapper that delegates to the new Storage module
 # This maintains all existing functionality while the code is reorganized
 module Ralph

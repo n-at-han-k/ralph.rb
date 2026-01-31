@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "helpers"
-require_relative "state"
-
 module Ralph
   # Agent configuration
   AgentConfig = Struct.new(

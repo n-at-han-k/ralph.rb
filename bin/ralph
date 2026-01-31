@@ -3,6 +3,6 @@
 
 $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
-require "ralph/cli"
+require "ralph"
 
 Ralph::CLI.new.run(ARGV)

@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "state"
-require_relative "tasks"
-
 module Ralph
   module PromptBuilder
     module_function

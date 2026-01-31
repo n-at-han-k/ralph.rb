@@ -37,3 +37,4 @@ Design documentation for Ralph.rb, a Ruby CLI that runs iterative AI development
 | Spec | Code | Purpose |
 |------|------|---------|
 | [output.md](./output.md) | [lib/ralph/output/](../lib/ralph/output/) | Terminal output structure: callable object pattern, channels, formatting conventions |
+
