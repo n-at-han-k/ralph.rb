@@ -252,13 +252,14 @@ module Ralph
       end
 
       def list_tasks
-        tasks = Storage::Tasks.load_tasks
-        unless tasks
-          puts "No tasks file found. Use --add-task to create your first task."
-          return
-        end
+        Storage::Tasks.load_tasks.then do |tasks|
+          unless tasks
+            puts "No tasks file found. Use --add-task to create your first task."
+            return
+          end
 
-        tasks.display_with_indices
+          tasks.display_with_indices
+        end
       rescue StandardError => e
         $stderr.puts "Error reading tasks file: #{e}"
         exit 1
