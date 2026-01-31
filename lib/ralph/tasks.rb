@@ -1,14 +1,62 @@
 # frozen_string_literal: true
 
-require_relative "types"
 require_relative "state"
 
 module Ralph
-  module Tasks
-    module_function
+  class Task
+    attr_accessor :text, :status, :subtasks, :original_line
 
-    # Parse markdown tasks into structured data
-    def parse(content)
+    def initialize(text:, status: :todo, subtasks: [], original_line: nil)
+      @text = text
+      @status = status
+      @subtasks = subtasks
+      @original_line = original_line
+    end
+
+    def status_char
+      case status
+      when :complete then "x"
+      when :in_progress then "/"
+      else " "
+      end
+    end
+
+    def to_s
+      "- [#{status_char}] #{text}"
+    end
+
+    def todo?        = status == :todo
+    def in_progress? = status == :in_progress
+    def complete?    = status == :complete
+
+    def toggle_status
+      case status
+      when :todo        then @status = :in_progress
+      when :in_progress then @status = :complete
+      when :complete    then @status = :todo
+      end
+    end
+
+    def mark_complete!    = @status = :complete
+    def mark_in_progress! = @status = :in_progress
+    def mark_todo!        = @status = :todo
+  end
+
+  class Tasks
+    include Enumerable
+
+    def initialize(tasks = [])
+      @tasks = tasks
+    end
+
+    def each(&block)  = @tasks.each(&block)
+    def count(&block) = @tasks.count(&block)
+
+    def empty? = @tasks.empty?
+    def length = @tasks.length
+    def any?   = @tasks.any?
+
+    def self.parse(content)
       tasks = []
       current_task = nil
 
@@ -41,18 +89,18 @@ module Ralph
       end
 
       tasks << current_task if current_task
-      tasks
+      new(tasks)
     end
 
     # Display tasks with numbering for CLI
-    def display_with_indices(tasks)
-      if tasks.empty?
+    def display_with_indices
+      if empty?
         puts "No tasks found."
         return
       end
 
       puts "Current tasks:"
-      tasks.each_with_index do |task, i|
+      each_with_index do |task, i|
         icon = status_icon(task.status)
         puts "#{i + 1}. #{icon} #{task.text}"
 
@@ -63,22 +111,22 @@ module Ralph
       end
     end
 
-    # Find the current in-progress task
-    def find_current(tasks)
-      tasks.find { |t| t.status == :in_progress }
-    end
+    def current = find { |t| t.status == :in_progress }
+    def next = find { |t| t.status == :todo }
 
-    # Find the next incomplete task
-    def find_next(tasks)
-      tasks.find { |t| t.status == :todo }
-    end
-
-    # Check if all tasks are complete
-    def all_complete?(tasks)
-      !tasks.empty? && tasks.all? { |t| t.status == :complete }
+    def all_complete?
+      !empty? && all? { |t| t.status == :complete }
     end
 
     def status_icon(status)
+      case status
+      when :complete    then "\u2705"
+      when :in_progress then "\u{1F504}"
+      else "\u{23F8}\uFE0F"
+      end
+    end
+
+    def self.status_icon(status)
       case status
       when :complete    then "\u2705"
       when :in_progress then "\u{1F504}"

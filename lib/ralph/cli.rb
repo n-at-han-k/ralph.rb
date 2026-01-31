@@ -280,10 +280,10 @@ module Ralph
             if tasks.any?
               puts "\n\u{1F4CB} CURRENT TASKS:"
               tasks.each_with_index do |task, i|
-                icon = Tasks.status_icon(task.status)
+                icon = tasks.status_icon(task.status)
                 puts "   #{i + 1}. #{icon} #{task.text}"
                 task.subtasks.each do |subtask|
-                  sub_icon = Tasks.status_icon(subtask.status)
+                  sub_icon = tasks.status_icon(subtask.status)
                   puts "      #{sub_icon} #{subtask.text}"
                 end
               end
@@ -388,7 +388,7 @@ module Ralph
       begin
         content = File.read(State.tasks_path)
         tasks = Tasks.parse(content)
-        Tasks.display_with_indices(tasks)
+        tasks.display_with_indices
       rescue StandardError => e
         $stderr.puts "Error reading tasks file: #{e}"
         exit 1

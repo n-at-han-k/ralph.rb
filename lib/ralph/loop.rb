@@ -1,30 +1,39 @@
 # frozen_string_literal: true
 
-require_relative "types"
 require_relative "helpers"
 require_relative "agents"
 require_relative "state"
 require_relative "tasks"
 require_relative "prompt_builder"
 require_relative "stream_processor"
-require_relative "output/banner"
-require_relative "output/config_summary"
-require_relative "output/iteration_header"
-require_relative "output/iteration_summary"
-require_relative "output/max_iterations_reached"
-require_relative "output/completion_detected"
-require_relative "output/completion_deferred"
-require_relative "output/struggle_warning"
-require_relative "output/nonzero_exit_warning"
-require_relative "output/plugin_error"
-require_relative "output/task_completion"
-require_relative "output/context_consumed"
-require_relative "output/auto_commit_notice"
-require_relative "output/active_loop_error"
-require_relative "output/iteration_error"
-require_relative "output/tasks_file_created"
+require_relative "iteration"
 
 module Ralph
+  # Single iteration record
+  IterationHistory = Struct.new(
+    :iteration,           # Integer
+    :started_at,          # String (ISO 8601)
+    :ended_at,            # String (ISO 8601)
+    :duration_ms,         # Integer
+    :tools_used,          # Hash<String, Integer>
+    :files_modified,      # Array<String>
+    :exit_code,           # Integer
+    :completion_detected, # Boolean
+    :errors,              # Array<String>
+    keyword_init: true
+  )
+
+  # Struggle indicators
+  StruggleIndicators = Struct.new(
+    :repeated_errors,        # Hash<String, Integer>
+    :no_progress_iterations, # Integer
+    :short_iterations,       # Integer
+    keyword_init: true
+  ) do
+    def self.empty
+      new(repeated_errors: {}, no_progress_iterations: 0, short_iterations: 0)
+    end
+  end
   class Loop
     def call(
       prompt:,
@@ -66,6 +75,19 @@ module Ralph
           exit 1
         else
           @agent_config = resolve_agent!(agent_type)
+
+          # Initialize iteration executor
+          @iteration = Iteration.new(
+            agent_config: @agent_config,
+            model: @model,
+            options: {
+              allow_all_permissions: @allow_all,
+              disable_plugins: disable_plugins,
+              stream_output: @stream_output,
+              verbose_tools: @verbose_tools,
+              completion_promise: @completion_promise
+            }
+          )
 
           if disable_plugins
             Output::NoPluginWarning.call(agent_type: @agent_config.type)
@@ -189,33 +211,33 @@ module Ralph
 
       def run_iteration
         context_at_start = State.load_context
-        snapshot_before  = State.capture_file_snapshot
         iteration_start  = Helpers.now_ms
 
-        result, exit_code = execute_agent(iteration_start)
-        combined_output   = "#{result.stdout_text}\n#{result.stderr_text}"
-        iteration_duration = Helpers.now_ms - iteration_start
+        # Build prompt for this iteration
+        full_prompt = PromptBuilder.build(@state, @agent_config)
 
-        completion_detected      = Helpers.check_completion(combined_output, @completion_promise)
-        task_completion_detected = @tasks_mode ? Helpers.check_completion(combined_output, @task_promise) : false
+        # Execute iteration using the Iteration class
+        result = @iteration.call(full_prompt, iteration_start: iteration_start)
+
+        # Check for task completion if in tasks mode
+        task_completion_detected = @tasks_mode ? Helpers.check_completion("#{result.stdout_text}\n#{result.stderr_text}", @task_promise) : false
 
         print_iteration_summary(
           iteration: @state.iteration,
-          elapsed_ms: iteration_duration,
+          elapsed_ms: result.duration_ms,
           tool_counts: result.tool_counts,
-          exit_code: exit_code,
-          completion_detected: completion_detected
+          exit_code: result.exit_code,
+          completion_detected: result.completion_detected
         )
 
-        record_iteration(iteration_start, iteration_duration, result, exit_code,
-                          completion_detected, snapshot_before, combined_output)
+        record_iteration(iteration_start, result)
 
         warn_if_struggling
-        detect_plugin_error!(combined_output)
-        warn_nonzero_exit(exit_code)
-        report_task_completion(task_completion_detected, completion_detected)
+        detect_plugin_error!("#{result.stdout_text}\n#{result.stderr_text}")
+        warn_nonzero_exit(result.exit_code)
+        report_task_completion(task_completion_detected, result.completion_detected)
 
-        outcome = handle_completion(completion_detected)
+        outcome = handle_completion(result.completion_detected)
         return outcome if outcome == :break
 
         consume_context(context_at_start)
@@ -228,60 +250,26 @@ module Ralph
         :continue
       end
 
-      # ---------- Agent execution ----------
-
-      def execute_agent(iteration_start)
-        full_prompt = PromptBuilder.build(@state, @agent_config)
-        cmd_args = @agent_config.build_args.call(full_prompt, @model, { allow_all_permissions: @allow_all })
-        env = @agent_config.build_env.call(
-          filter_plugins: @disable_plugins,
-          allow_all_permissions: @allow_all
-        )
-        cmd = [@agent_config.command] + cmd_args
-
-        if @stream_output
-          StreamProcessor.stream(
-            cmd: cmd,
-            env: env,
-            compact_tools: !@verbose_tools,
-            tool_summary_interval_ms: 3000,
-            heartbeat_interval_ms: 10000,
-            iteration_start: iteration_start,
-            agent: @agent_config
-          )
-        else
-          result, exit_code = StreamProcessor.capture(cmd: cmd, env: env, agent: @agent_config)
-          $stderr.puts result.stderr_text unless result.stderr_text.empty?
-          puts result.stdout_text
-          [result, exit_code]
-        end
-      end
+      # ---------- History & struggle tracking ----------
 
       # ---------- History & struggle tracking ----------
 
-      def record_iteration(iteration_start, iteration_duration, result, exit_code,
-                           completion_detected, snapshot_before, combined_output)
-        snapshot_after  = State.capture_file_snapshot
-        files_modified  = State.modified_files_since_snapshot(snapshot_before, snapshot_after)
-        errors          = Helpers.extract_errors(combined_output)
-
-        tool_counts = result.tool_counts.is_a?(Hash) ? result.tool_counts : result.tool_counts.to_h
-
+      def record_iteration(iteration_start, result)
         iter_record = IterationHistory.new(
           iteration: @state.iteration,
           started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
           ended_at: Time.now.utc.iso8601,
-          duration_ms: iteration_duration,
-          tools_used: tool_counts,
-          files_modified: files_modified,
-          exit_code: exit_code,
-          completion_detected: completion_detected,
-          errors: errors
+          duration_ms: result.duration_ms,
+          tools_used: result.tool_counts,
+          files_modified: result.files_modified,
+          exit_code: result.exit_code,
+          completion_detected: result.completion_detected,
+          errors: result.errors
         )
 
         @history.iterations << iter_record
-        @history.total_duration_ms += iteration_duration
-        update_struggle_indicators(files_modified, iteration_duration, errors)
+        @history.total_duration_ms += result.duration_ms
+        update_struggle_indicators(result.files_modified, result.duration_ms, result.errors)
         State.save_history(@history)
       end
 

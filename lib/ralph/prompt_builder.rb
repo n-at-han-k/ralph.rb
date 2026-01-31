@@ -96,8 +96,8 @@ module Ralph
       begin
         tasks_content = File.read(tasks_path)
         tasks = Tasks.parse(tasks_content)
-        current_task = Tasks.find_current(tasks)
-        next_task = Tasks.find_next(tasks)
+        current_task = tasks.current
+        next_task = tasks.next
 
         task_instructions = if current_task
           <<~INST
@@ -111,7 +111,7 @@ module Ralph
                Mark as [/] in .ralph/ralph-tasks.md before starting.
                When done: Mark as [x] and output <promise>#{state.task_promise}</promise>
           INST
-        elsif Tasks.all_complete?(tasks)
+        elsif tasks.all_complete?
           <<~INST
             \u2705 ALL TASKS COMPLETE!
                Output <promise>#{state.completion_promise}</promise> to finish.

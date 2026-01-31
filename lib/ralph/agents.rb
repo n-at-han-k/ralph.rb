@@ -1,10 +1,19 @@
 # frozen_string_literal: true
 
-require_relative "types"
 require_relative "helpers"
 require_relative "state"
 
 module Ralph
+  # Agent configuration
+  AgentConfig = Struct.new(
+    :type,             # Symbol - :opencode, :claude_code, :codex
+    :command,          # String - CLI command name
+    :build_args,       # Proc(prompt, model, options) -> Array<String>
+    :build_env,        # Proc(options) -> Hash<String, String>
+    :parse_tool_output,# Proc(line) -> String or nil
+    :config_name,      # String - display name
+    keyword_init: true
+  )
   module Agents
     module_function
 

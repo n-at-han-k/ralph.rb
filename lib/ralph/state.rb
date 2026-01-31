@@ -2,9 +2,43 @@
 
 require "json"
 require "fileutils"
-require_relative "types"
+require_relative "loop"
 
 module Ralph
+  # Full history across iterations
+  RalphHistory = Struct.new(
+    :iterations,          # Array<IterationHistory>
+    :total_duration_ms,   # Integer
+    :struggle_indicators, # StruggleIndicators
+    keyword_init: true
+  ) do
+    def self.empty
+      new(
+        iterations: [],
+        total_duration_ms: 0,
+        struggle_indicators: StruggleIndicators.empty
+      )
+    end
+  end
+
+  # Persistent loop state
+  RalphState = Struct.new(
+    :active,              # Boolean
+    :iteration,           # Integer
+    :min_iterations,      # Integer
+    :max_iterations,      # Integer
+    :completion_promise,  # String
+    :tasks_mode,          # Boolean
+    :task_promise,        # String
+    :prompt,              # String
+    :started_at,          # String (ISO 8601)
+    :model,               # String
+    :agent,               # String
+    keyword_init: true
+  )
+
+  # File snapshot for change detection
+  FileSnapshot = Struct.new(:files, keyword_init: true) # files: Hash<String, String>
   module State
     module_function
 
