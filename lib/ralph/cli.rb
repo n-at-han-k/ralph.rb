@@ -228,7 +228,7 @@ module Ralph
       def add_context(context_text)
         timestamp = Time.now.utc.iso8601
         new_entry = "\n## Context added at #{timestamp}\n#{context_text}\n"
-        Storage.append_context(new_entry)
+        Storage::Context.append_context(new_entry)
 
         puts "✅ Context added for next iteration"
         puts "   File: #{State.context_path}"
@@ -242,8 +242,8 @@ module Ralph
       end
 
       def clear_context
-        if Storage.load_context
-          Storage.clear_context
+        if Storage::Context.load_context
+          Storage::Context.clear_context
           puts "✅ Context cleared"
         else
           puts "ℹ️  No pending context to clear"
@@ -251,7 +251,7 @@ module Ralph
       end
 
       def list_tasks
-        tasks = Storage.load_tasks
+        tasks = Storage::Tasks.load_tasks
         unless tasks
           puts "No tasks file found. Use --add-task to create your first task."
           return
@@ -264,7 +264,7 @@ module Ralph
       end
 
       def add_task(description)
-        Storage.add_task(description)
+        Storage::Tasks.add_task(description)
         puts "✅ Task added: \"#{description}\""
       rescue StandardError => e
         $stderr.puts "Error adding task: #{e}"
@@ -272,7 +272,7 @@ module Ralph
       end
 
       def remove_task(task_index)
-        Storage.remove_task(task_index)
+        Storage::Tasks.remove_task(task_index)
         puts "✅ Removed task #{task_index} and its subtasks"
       rescue IndexError => e
         $stderr.puts "Error: #{e.message}"
