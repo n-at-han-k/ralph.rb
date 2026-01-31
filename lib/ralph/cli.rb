@@ -10,11 +10,13 @@ require_relative "tasks"
 require_relative "loop"
 
 module Ralph
-  module CLI
-    module_function
+  class CLI
+    def initialize
+      @options = {}
+    end
 
     def run(argv = ARGV)
-      options = {
+      @options = {
         prompt: "",
         min_iterations: 1,
         max_iterations: 0,
@@ -36,7 +38,7 @@ module Ralph
       command = nil
       command_arg = nil
 
-      parser = build_parser(options) do |cmd, arg|
+      parser = build_parser(@options) do |cmd, arg|
         command = cmd
         command_arg = arg
       end
@@ -50,7 +52,7 @@ module Ralph
         puts "ralph #{VERSION}"
         exit 0
       when :status
-        show_status(options)
+        show_status(@options)
         exit 0
       when :add_context
         handle_add_context(command_arg)
@@ -70,14 +72,14 @@ module Ralph
       end
 
       # Resolve prompt from file or positional args
-      resolve_prompt!(options, prompt_parts)
+      resolve_prompt!(prompt_parts)
 
       # Validate
-      if options[:max_iterations] > 0 && options[:min_iterations] > options[:max_iterations]
-        abort "Error: --min-iterations (#{options[:min_iterations]}) cannot be greater than --max-iterations (#{options[:max_iterations]})"
+      if @options[:max_iterations] > 0 && @options[:min_iterations] > @options[:max_iterations]
+        abort "Error: --min-iterations (#{@options[:min_iterations]}) cannot be greater than --max-iterations (#{@options[:max_iterations]})"
       end
 
-      Ralph::Loop.new.call(**options)
+      Ralph::Loop.new.call(**@options)
     rescue OptionParser::ParseError => e
       abort "#{e.message}\nRun 'ralph --help' for available options"
     rescue StandardError => e
@@ -209,25 +211,25 @@ module Ralph
       end
     end
 
-    def resolve_prompt!(options, prompt_parts)
-      if !options[:prompt_file].empty?
-        options[:prompt_source] = options[:prompt_file]
-        options[:prompt] = read_prompt_file(options[:prompt_file])
+    def resolve_prompt!(prompt_parts)
+      if !@options[:prompt_file].empty?
+        @options[:prompt_source] = @options[:prompt_file]
+        @options[:prompt] = read_prompt_file(@options[:prompt_file])
       elsif prompt_parts.length == 1 && File.exist?(prompt_parts[0])
-        options[:prompt_source] = prompt_parts[0]
-        options[:prompt] = read_prompt_file(prompt_parts[0])
+        @options[:prompt_source] = prompt_parts[0]
+        @options[:prompt] = read_prompt_file(prompt_parts[0])
       else
-        options[:prompt] = prompt_parts.join(" ")
+        @options[:prompt] = prompt_parts.join(" ")
       end
 
-      if options[:prompt].empty?
+      if @options[:prompt].empty?
         abort "Error: No prompt provided\nUsage: ralph \"Your task description\" [options]\nRun 'ralph --help' for more information"
       end
     end
 
     # --- Command handlers ---
 
-    def show_status(options)
+    def show_status(options = @options)
       state = State.load_state
       history = State.load_history
       context = State.load_context

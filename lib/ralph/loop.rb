@@ -34,6 +34,7 @@ module Ralph
       new(repeated_errors: {}, no_progress_iterations: 0, short_iterations: 0)
     end
   end
+
   class Loop
     def call(
       prompt:,
