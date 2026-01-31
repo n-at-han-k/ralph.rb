@@ -155,8 +155,25 @@ module Ralph
         o.separator "Learn more: https://ghuntley.com/ralph/"
       end
 
-      # Parse and collect remaining positional args as prompt parts
-      prompt_parts = parser.parse(argv.dup)
+      parser.parse(argv.dup).then do |prompt_parts|
+        begin
+          Prompt.from_parts(prompt_parts, prompt_file: @options[:prompt_file]).then do |prompt|
+            if prompt.empty?
+              abort "
+                Error: No prompt provided
+                Usage: ralph 'Your task description' [options]
+                Run 'ralph --help' for more information
+              "
+            end
+
+            @options[:prompt] = prompt.to_s
+            @options[:prompt_source] = prompt.source
+          end
+        rescue Prompt::Error => e
+          abort e.message
+        end
+      end
+
 
       # Dispatch subcommands
       case command
@@ -183,9 +200,6 @@ module Ralph
         exit 0
       end
 
-      # Resolve prompt from file or positional args
-      resolve_prompt!(prompt_parts)
-
       # Validate
       if @options[:max_iterations] > 0 && @options[:min_iterations] > @options[:max_iterations]
         abort "Error: --min-iterations (#{@options[:min_iterations]}) cannot be greater than --max-iterations (#{@options[:max_iterations]})"
@@ -194,206 +208,135 @@ module Ralph
       # Remove prompt_file from options as Loop doesn't accept it
       loop_options = @options.reject { |key, _| key == :prompt_file }
       Ralph::Loop.new.call(**loop_options)
+
     rescue OptionParser::ParseError => e
       abort "#{e.message}\nRun 'ralph --help' for available options"
+
     rescue StandardError => e
       $stderr.puts "Fatal error: #{e}"
       State.clear_state
       exit 1
+
     end
 
-    def resolve_prompt!(prompt_parts)
-      prompt = Prompt.from_parts(prompt_parts, prompt_file: @options[:prompt_file])
-      
-      if prompt.empty?
-        abort "Error: No prompt provided\nUsage: ralph \"Your task description\" [options]\nRun 'ralph --help' for more information"
+    private
+
+      def show_status(options = @options)
+        Output::Status.call(options: options)
       end
 
-      @options[:prompt] = prompt.to_s
-      @options[:prompt_source] = prompt.source
-    rescue Prompt::Error => e
-      abort e.message
-    end
+      def handle_add_context(context_text)
+        FileUtils.mkdir_p(State.state_dir)
+        timestamp = Time.now.utc.iso8601
+        new_entry = "\n## Context added at #{timestamp}\n#{context_text}\n"
 
-    # --- Command handlers ---
-
-    def show_status(options = @options)
-      state = State.load_state
-      history = State.load_history
-      context = State.load_context
-      show_tasks = options[:tasks_mode] || state&.tasks_mode
-
-      Output::StatusHeader.call
-
-      if state&.active
-        Output::ActiveLoopStatus.call(state: state)
-      else
-        Output::NoActiveLoop.call
-      end
-
-      if context
-        Output::PendingContext.call(context: context)
-      end
-
-      if show_tasks
-        if File.exist?(State.tasks_path)
-          begin
-            tasks_content = File.read(State.tasks_path)
-            tasks = Tasks.parse(tasks_content)
-            Output::CurrentTasks.call(tasks: tasks)
-          rescue StandardError
-            Output::TasksFileError.call
-          end
+        if File.exist?(State.context_path)
+          existing = File.read(State.context_path)
+          File.write(State.context_path, existing + new_entry)
         else
-          Output::NoTasksFile.call
+          File.write(State.context_path, "# Ralph Loop Context\n#{new_entry}")
         end
-      end
 
-      if history.iterations.any?
-        Output::HistoryHeader.call(iteration_count: history.iterations.length)
-        Output::TotalTime.call(total_duration_ms: history.total_duration_ms)
+        puts "\u2705 Context added for next iteration"
+        puts "   File: #{State.context_path}"
 
-        recent = history.iterations.last(5)
-        Output::RecentIterations.call(iterations: recent)
-
-        si = history.struggle_indicators
-        has_repeated = si.repeated_errors.values.any? { |c| c >= 2 }
-        if si.no_progress_iterations >= 3 || si.short_iterations >= 3 || has_repeated
-          Output::StruggleWarningHeader.call
-          if si.no_progress_iterations >= 3
-            Output::NoProgressWarning.call(count: si.no_progress_iterations)
-          end
-          if si.short_iterations >= 3
-            Output::ShortIterationsWarning.call(count: si.short_iterations)
-          end
-          top_errors = si.repeated_errors
-                         .select { |_, count| count >= 2 }
-                         .sort_by { |_, count| -count }
-                         .first(3)
-          top_errors.each do |error, count|
-            Output::RepeatedErrorWarning.call(error: error, count: count)
-          end
-          Output::ContextHint.call
-        end
-      end
-
-      Output::StatusFooter.call
-    end
-
-    def handle_add_context(context_text)
-      FileUtils.mkdir_p(State.state_dir)
-      timestamp = Time.now.utc.iso8601
-      new_entry = "\n## Context added at #{timestamp}\n#{context_text}\n"
-
-      if File.exist?(State.context_path)
-        existing = File.read(State.context_path)
-        File.write(State.context_path, existing + new_entry)
-      else
-        File.write(State.context_path, "# Ralph Loop Context\n#{new_entry}")
-      end
-
-      puts "\u2705 Context added for next iteration"
-      puts "   File: #{State.context_path}"
-
-      state = State.load_state
-      if state&.active
-        puts "   Will be picked up in iteration #{state.iteration + 1}"
-      else
-        puts "   Will be used when loop starts"
-      end
-    end
-
-    def handle_clear_context
-      if File.exist?(State.context_path)
-        File.delete(State.context_path)
-        puts "\u2705 Context cleared"
-      else
-        puts "\u2139\uFE0F  No pending context to clear"
-      end
-    end
-
-    def handle_list_tasks
-      unless File.exist?(State.tasks_path)
-        puts "No tasks file found. Use --add-task to create your first task."
-        return
-      end
-
-      begin
-        content = File.read(State.tasks_path)
-        tasks = Tasks.parse(content)
-        tasks.display_with_indices
-      rescue StandardError => e
-        $stderr.puts "Error reading tasks file: #{e}"
-        exit 1
-      end
-    end
-
-    def handle_add_task(description)
-      FileUtils.mkdir_p(State.state_dir)
-
-      begin
-        content = if File.exist?(State.tasks_path)
-          File.read(State.tasks_path)
+        state = State.load_state
+        if state&.active
+          puts "   Will be picked up in iteration #{state.iteration + 1}"
         else
-          "# Ralph Tasks\n\n"
+          puts "   Will be used when loop starts"
+        end
+      end
+
+      def handle_clear_context
+        if File.exist?(State.context_path)
+          File.delete(State.context_path)
+          puts "\u2705 Context cleared"
+        else
+          puts "\u2139\uFE0F  No pending context to clear"
+        end
+      end
+
+      def handle_list_tasks
+        unless File.exist?(State.tasks_path)
+          puts "No tasks file found. Use --add-task to create your first task."
+          return
         end
 
-        new_content = content.rstrip + "\n" + "- [ ] #{description}\n"
-        File.write(State.tasks_path, new_content)
-        puts "\u2705 Task added: \"#{description}\""
-      rescue StandardError => e
-        $stderr.puts "Error adding task: #{e}"
-        exit 1
-      end
-    end
-
-    def handle_remove_task(task_index)
-      unless File.exist?(State.tasks_path)
-        $stderr.puts "Error: No tasks file found"
-        exit 1
+        begin
+          content = File.read(State.tasks_path)
+          tasks = Tasks.parse(content)
+          tasks.display_with_indices
+        rescue StandardError => e
+          $stderr.puts "Error reading tasks file: #{e}"
+          exit 1
+        end
       end
 
-      begin
-        content = File.read(State.tasks_path)
-        tasks = Tasks.parse(content)
+      def handle_add_task(description)
+        FileUtils.mkdir_p(State.state_dir)
 
-        if task_index < 1 || task_index > tasks.length
-          $stderr.puts "Error: Task index #{task_index} is out of range (1-#{tasks.length})"
+        begin
+          content = if File.exist?(State.tasks_path)
+            File.read(State.tasks_path)
+          else
+            "# Ralph Tasks\n\n"
+          end
+
+          new_content = content.rstrip + "\n" + "- [ ] #{description}\n"
+          File.write(State.tasks_path, new_content)
+          puts "\u2705 Task added: \"#{description}\""
+        rescue StandardError => e
+          $stderr.puts "Error adding task: #{e}"
+          exit 1
+        end
+      end
+
+      def handle_remove_task(task_index)
+        unless File.exist?(State.tasks_path)
+          $stderr.puts "Error: No tasks file found"
           exit 1
         end
 
-        lines = content.split("\n")
-        new_lines = []
-        in_removed_task = false
-        current_task_line = 0
+        begin
+          content = File.read(State.tasks_path)
+          tasks = Tasks.parse(content)
 
-        lines.each do |line|
-          if line.match?(/^- \[/)
-            current_task_line += 1
-            if current_task_line == task_index
-              in_removed_task = true
-              next
-            else
-              in_removed_task = false
+          if task_index < 1 || task_index > tasks.length
+            $stderr.puts "Error: Task index #{task_index} is out of range (1-#{tasks.length})"
+            exit 1
+          end
+
+          lines = content.split("\n")
+          new_lines = []
+          in_removed_task = false
+          current_task_line = 0
+
+          lines.each do |line|
+            if line.match?(/^- \[/)
+              current_task_line += 1
+              if current_task_line == task_index
+                in_removed_task = true
+                next
+              else
+                in_removed_task = false
+              end
             end
+
+            # Skip indented content under removed task
+            if in_removed_task && line.match?(/^\s+/) && !line.strip.empty?
+              next
+            end
+
+            new_lines << line
           end
 
-          # Skip indented content under removed task
-          if in_removed_task && line.match?(/^\s+/) && !line.strip.empty?
-            next
-          end
-
-          new_lines << line
+          File.write(State.tasks_path, new_lines.join("\n"))
+          puts "\u2705 Removed task #{task_index} and its subtasks"
+        rescue StandardError => e
+          $stderr.puts "Error removing task: #{e}"
+          exit 1
         end
-
-        File.write(State.tasks_path, new_lines.join("\n"))
-        puts "\u2705 Removed task #{task_index} and its subtasks"
-      rescue StandardError => e
-        $stderr.puts "Error removing task: #{e}"
-        exit 1
       end
-    end
-
-
   end
 end
