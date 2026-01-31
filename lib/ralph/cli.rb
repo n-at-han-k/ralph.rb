@@ -12,10 +12,6 @@ require_relative "loop"
 module Ralph
   class CLI
     def initialize
-      @options = {}
-    end
-
-    def run(argv = ARGV)
       @options = {
         prompt: "",
         min_iterations: 1,
@@ -33,14 +29,139 @@ module Ralph
         verbose_tools: false,
         prompt_source: ""
       }
+    end
 
+    def run(argv = ARGV)
       # Subcommand state -- set by flags, dispatched after parsing
       command = nil
       command_arg = nil
 
-      parser = build_parser(@options) do |cmd, arg|
-        command = cmd
-        command_arg = arg
+      parser = OptionParser.new do |o|
+        o.banner = <<~BANNER
+          Ralph Wiggum Loop - Iterative AI development with AI agents
+
+          Usage:
+            ralph "<prompt>" [options]
+            ralph --prompt-file <path> [options]
+
+          Commands:
+            --status            Show current Ralph loop status and history
+            --add-context TEXT  Add context for the next iteration
+            --clear-context     Clear any pending context
+            --list-tasks        Display the current task list with indices
+            --add-task "desc"   Add a new task to the list
+            --remove-task N     Remove task at index N (including subtasks)
+
+          Options:
+        BANNER
+
+        o.on("--agent AGENT", Agents.valid_agent_names, "AI agent: #{Agents.valid_agent_names.join(', ')} (default: opencode)") do |v|
+          @options[:agent_type] = v
+        end
+
+        o.on("--min-iterations N", Integer, "Minimum iterations before completion (default: 1)") do |v|
+          @options[:min_iterations] = v
+        end
+
+        o.on("--max-iterations N", Integer, "Maximum iterations before stopping (default: unlimited)") do |v|
+          @options[:max_iterations] = v
+        end
+
+        o.on("--completion-promise TEXT", "Phrase that signals completion (default: COMPLETE)") do |v|
+          @options[:completion_promise] = v
+        end
+
+        o.on("-t", "--tasks", "Enable Tasks Mode for structured task tracking") do
+          @options[:tasks_mode] = true
+        end
+
+        o.on("--task-promise TEXT", "Phrase that signals task completion (default: READY_FOR_NEXT_TASK)") do |v|
+          @options[:task_promise] = v
+        end
+
+        o.on("--model MODEL", "Model to use (agent-specific)") do |v|
+          @options[:model] = v
+        end
+
+        o.on("-f", "--prompt-file PATH", "--file PATH", "Read prompt content from a file") do |v|
+          @options[:prompt_file] = v
+        end
+
+        o.on("--[no-]stream", "Stream agent output in real-time (default: on)") do |v|
+          @options[:stream_output] = v
+        end
+
+        o.on("--verbose-tools", "Print every tool line (disable compact summary)") do
+          @options[:verbose_tools] = true
+        end
+
+        o.on("--no-plugins", "Disable non-auth OpenCode plugins (opencode only)") do
+          @options[:disable_plugins] = true
+        end
+
+        o.on("--[no-]commit", "Auto-commit after each iteration (default: on)") do |v|
+          @options[:auto_commit] = v
+        end
+
+        o.on("--[no-]allow-all", "Auto-approve all tool permissions (default: on)") do |v|
+          @options[:allow_all_permissions] = v
+        end
+
+        # Subcommands -- these set a command to dispatch after parsing
+        o.on("-v", "--version", "Show version") do
+          command = :version
+          command_arg = nil
+        end
+
+        o.on("--status", "Show current loop status and history") do
+          command = :status
+          command_arg = nil
+        end
+
+        o.on("--add-context TEXT", "Add context for the next iteration") do |v|
+          command = :add_context
+          command_arg = v
+        end
+
+        o.on("--clear-context", "Clear any pending context") do
+          command = :clear_context
+          command_arg = nil
+        end
+
+        o.on("--list-tasks", "Display the current task list") do
+          command = :list_tasks
+          command_arg = nil
+        end
+
+        o.on("--add-task DESC", "Add a new task to the list") do |v|
+          command = :add_task
+          command_arg = v
+        end
+
+        o.on("--remove-task N", Integer, "Remove task at index N") do |v|
+          command = :remove_task
+          command_arg = v
+        end
+
+        o.separator ""
+        o.separator "Examples:"
+        o.separator '  ralph "Build a REST API for todos"'
+        o.separator '  ralph "Fix the auth bug" --max-iterations 10'
+        o.separator '  ralph "Add tests" --completion-promise "ALL TESTS PASS" --model openai/gpt-5.1'
+        o.separator '  ralph --prompt-file ./prompt.md --max-iterations 5'
+        o.separator '  ralph --status'
+        o.separator '  ralph --add-context "Focus on the auth module first"'
+        o.separator ""
+        o.separator "How it works:"
+        o.separator "  1. Sends your prompt to the selected AI agent"
+        o.separator "  2. AI agent works on the task"
+        o.separator "  3. Checks output for completion promise"
+        o.separator "  4. If not complete, repeats with same prompt"
+        o.separator "  5. AI sees its previous work in files"
+        o.separator "  6. Continues until promise detected or max iterations"
+        o.separator ""
+        o.separator "To stop manually: Ctrl+C"
+        o.separator "Learn more: https://ghuntley.com/ralph/"
       end
 
       # Parse and collect remaining positional args as prompt parts
@@ -88,128 +209,7 @@ module Ralph
       exit 1
     end
 
-    def build_parser(options)
-      OptionParser.new do |o|
-        o.banner = <<~BANNER
-          Ralph Wiggum Loop - Iterative AI development with AI agents
 
-          Usage:
-            ralph "<prompt>" [options]
-            ralph --prompt-file <path> [options]
-
-          Commands:
-            --status            Show current Ralph loop status and history
-            --add-context TEXT  Add context for the next iteration
-            --clear-context     Clear any pending context
-            --list-tasks        Display the current task list with indices
-            --add-task "desc"   Add a new task to the list
-            --remove-task N     Remove task at index N (including subtasks)
-
-          Options:
-        BANNER
-
-        o.on("--agent AGENT", Agents.valid_agent_names, "AI agent: #{Agents.valid_agent_names.join(', ')} (default: opencode)") do |v|
-          options[:agent_type] = v
-        end
-
-        o.on("--min-iterations N", Integer, "Minimum iterations before completion (default: 1)") do |v|
-          options[:min_iterations] = v
-        end
-
-        o.on("--max-iterations N", Integer, "Maximum iterations before stopping (default: unlimited)") do |v|
-          options[:max_iterations] = v
-        end
-
-        o.on("--completion-promise TEXT", "Phrase that signals completion (default: COMPLETE)") do |v|
-          options[:completion_promise] = v
-        end
-
-        o.on("-t", "--tasks", "Enable Tasks Mode for structured task tracking") do
-          options[:tasks_mode] = true
-        end
-
-        o.on("--task-promise TEXT", "Phrase that signals task completion (default: READY_FOR_NEXT_TASK)") do |v|
-          options[:task_promise] = v
-        end
-
-        o.on("--model MODEL", "Model to use (agent-specific)") do |v|
-          options[:model] = v
-        end
-
-        o.on("-f", "--prompt-file PATH", "--file PATH", "Read prompt content from a file") do |v|
-          options[:prompt_file] = v
-        end
-
-        o.on("--[no-]stream", "Stream agent output in real-time (default: on)") do |v|
-          options[:stream_output] = v
-        end
-
-        o.on("--verbose-tools", "Print every tool line (disable compact summary)") do
-          options[:verbose_tools] = true
-        end
-
-        o.on("--no-plugins", "Disable non-auth OpenCode plugins (opencode only)") do
-          options[:disable_plugins] = true
-        end
-
-        o.on("--[no-]commit", "Auto-commit after each iteration (default: on)") do |v|
-          options[:auto_commit] = v
-        end
-
-        o.on("--[no-]allow-all", "Auto-approve all tool permissions (default: on)") do |v|
-          options[:allow_all_permissions] = v
-        end
-
-        # Subcommands -- these set a command to dispatch after parsing
-        o.on("-v", "--version", "Show version") do
-          yield :version, nil
-        end
-
-        o.on("--status", "Show current loop status and history") do
-          yield :status, nil
-        end
-
-        o.on("--add-context TEXT", "Add context for the next iteration") do |v|
-          yield :add_context, v
-        end
-
-        o.on("--clear-context", "Clear any pending context") do
-          yield :clear_context, nil
-        end
-
-        o.on("--list-tasks", "Display the current task list") do
-          yield :list_tasks, nil
-        end
-
-        o.on("--add-task DESC", "Add a new task to the list") do |v|
-          yield :add_task, v
-        end
-
-        o.on("--remove-task N", Integer, "Remove task at index N") do |v|
-          yield :remove_task, v
-        end
-
-        o.separator ""
-        o.separator "Examples:"
-        o.separator '  ralph "Build a REST API for todos"'
-        o.separator '  ralph "Fix the auth bug" --max-iterations 10'
-        o.separator '  ralph "Add tests" --completion-promise "ALL TESTS PASS" --model openai/gpt-5.1'
-        o.separator '  ralph --prompt-file ./prompt.md --max-iterations 5'
-        o.separator '  ralph --status'
-        o.separator '  ralph --add-context "Focus on the auth module first"'
-        o.separator ""
-        o.separator "How it works:"
-        o.separator "  1. Sends your prompt to the selected AI agent"
-        o.separator "  2. AI agent works on the task"
-        o.separator "  3. Checks output for completion promise"
-        o.separator "  4. If not complete, repeats with same prompt"
-        o.separator "  5. AI sees its previous work in files"
-        o.separator "  6. Continues until promise detected or max iterations"
-        o.separator ""
-        o.separator "To stop manually: Ctrl+C"
-        o.separator "Learn more: https://ghuntley.com/ralph/"
-      end
-    end
 
     def resolve_prompt!(prompt_parts)
       if !@options[:prompt_file].empty?
@@ -230,48 +230,38 @@ module Ralph
     # --- Command handlers ---
 
     def show_status(options = @options)
+      require_relative "output/status_header"
+      require_relative "output/active_loop_status"
+      require_relative "output/no_active_loop"
+      require_relative "output/pending_context"
+      require_relative "output/current_tasks"
+      require_relative "output/no_tasks_file"
+      require_relative "output/tasks_file_error"
+      require_relative "output/history_header"
+      require_relative "output/total_time"
+      require_relative "output/recent_iterations"
+      require_relative "output/struggle_warning_header"
+      require_relative "output/no_progress_warning"
+      require_relative "output/short_iterations_warning"
+      require_relative "output/repeated_error_warning"
+      require_relative "output/context_hint"
+      require_relative "output/status_footer"
+
       state = State.load_state
       history = State.load_history
       context = State.load_context
       show_tasks = options[:tasks_mode] || state&.tasks_mode
 
-      puts <<~HEADER
-
-        \u2554#{"=" * 66}\u2557
-        \u2551                    Ralph Wiggum Status                           \u2551
-        \u255A#{"=" * 66}\u255D
-      HEADER
+      Output::StatusHeader.call
 
       if state&.active
-        elapsed = Helpers.now_ms - (Time.parse(state.started_at).to_f * 1000).to_i
-        elapsed_str = Helpers.format_duration_long(elapsed)
-        puts "\u{1F504} ACTIVE LOOP"
-        max_str = state.max_iterations > 0 ? " / #{state.max_iterations}" : " (unlimited)"
-        puts "   Iteration:    #{state.iteration}#{max_str}"
-        puts "   Started:      #{state.started_at}"
-        puts "   Elapsed:      #{elapsed_str}"
-        puts "   Promise:      #{state.completion_promise}"
-        agent_label = if state.agent
-          cfg = Agents.resolve(state.agent)
-          cfg ? cfg.config_name : state.agent
-        else
-          "OpenCode"
-        end
-        puts "   Agent:        #{agent_label}"
-        puts "   Model:        #{state.model}" if state.model && !state.model.empty?
-        if state.tasks_mode
-          puts "   Tasks Mode:   ENABLED"
-          puts "   Task Promise: #{state.task_promise}"
-        end
-        prompt_preview = state.prompt[0, 60] + (state.prompt.length > 60 ? "..." : "")
-        puts "   Prompt:       #{prompt_preview}"
+        Output::ActiveLoopStatus.call(state: state)
       else
-        puts "\u23F9\uFE0F  No active loop"
+        Output::NoActiveLoop.call
       end
 
       if context
-        puts "\n\u{1F4DD} PENDING CONTEXT (will be injected next iteration):"
-        puts "   #{context.split("\n").join("\n   ")}"
+        Output::PendingContext.call(context: context)
       end
 
       if show_tasks
@@ -279,74 +269,44 @@ module Ralph
           begin
             tasks_content = File.read(State.tasks_path)
             tasks = Tasks.parse(tasks_content)
-            if tasks.any?
-              puts "\n\u{1F4CB} CURRENT TASKS:"
-              tasks.each_with_index do |task, i|
-                icon = tasks.status_icon(task.status)
-                puts "   #{i + 1}. #{icon} #{task.text}"
-                task.subtasks.each do |subtask|
-                  sub_icon = tasks.status_icon(subtask.status)
-                  puts "      #{sub_icon} #{subtask.text}"
-                end
-              end
-              complete = tasks.count { |t| t.status == :complete }
-              in_progress = tasks.count { |t| t.status == :in_progress }
-              puts "\n   Progress: #{complete}/#{tasks.length} complete, #{in_progress} in progress"
-            else
-              puts "\n\u{1F4CB} CURRENT TASKS: (no tasks found)"
-            end
+            Output::CurrentTasks.call(tasks: tasks)
           rescue StandardError
-            puts "\n\u{1F4CB} CURRENT TASKS: (error reading tasks)"
+            Output::TasksFileError.call
           end
         else
-          puts "\n\u{1F4CB} CURRENT TASKS: (no tasks file found)"
+          Output::NoTasksFile.call
         end
       end
 
       if history.iterations.any?
-        puts "\n\u{1F4CA} HISTORY (#{history.iterations.length} iterations)"
-        puts "   Total time:   #{Helpers.format_duration_long(history.total_duration_ms)}"
+        Output::HistoryHeader.call(iteration_count: history.iterations.length)
+        Output::TotalTime.call(total_duration_ms: history.total_duration_ms)
 
         recent = history.iterations.last(5)
-        puts "\n   Recent iterations:"
-        recent.each do |iter|
-          tools = iter.tools_used
-                    .sort_by { |_, v| -v }
-                    .first(3)
-                    .map { |k, v| "#{k}:#{v}" }
-                    .join(" ")
-          status_icon = if iter.completion_detected
-            "\u2705"
-          elsif iter.exit_code != 0
-            "\u274C"
-          else
-            "\u{1F504}"
-          end
-          puts "   #{status_icon} ##{iter.iteration}: #{Helpers.format_duration_long(iter.duration_ms)} | #{tools.empty? ? "no tools" : tools}"
-        end
+        Output::RecentIterations.call(iterations: recent)
 
         si = history.struggle_indicators
         has_repeated = si.repeated_errors.values.any? { |c| c >= 2 }
         if si.no_progress_iterations >= 3 || si.short_iterations >= 3 || has_repeated
-          puts "\n\u26A0\uFE0F  STRUGGLE INDICATORS:"
+          Output::StruggleWarningHeader.call
           if si.no_progress_iterations >= 3
-            puts "   - No file changes in #{si.no_progress_iterations} iterations"
+            Output::NoProgressWarning.call(count: si.no_progress_iterations)
           end
           if si.short_iterations >= 3
-            puts "   - #{si.short_iterations} very short iterations (< 30s)"
+            Output::ShortIterationsWarning.call(count: si.short_iterations)
           end
           top_errors = si.repeated_errors
                          .select { |_, count| count >= 2 }
                          .sort_by { |_, count| -count }
                          .first(3)
           top_errors.each do |error, count|
-            puts "   - Same error #{count}x: \"#{error[0, 50]}...\""
+            Output::RepeatedErrorWarning.call(error: error, count: count)
           end
-          puts "\n   \u{1F4A1} Consider using: ralph --add-context \"your hint here\""
+          Output::ContextHint.call
         end
       end
 
-      puts ""
+      Output::StatusFooter.call
     end
 
     def handle_add_context(context_text)
