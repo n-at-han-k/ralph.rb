@@ -30,9 +30,9 @@ module Ralph
         def print_header
           puts <<~HEADER
 
-            \u2554#{"=" * 66}\u2557
-            \u2551                    Ralph Wiggum Status                           \u2551
-            \u255A#{"=" * 66}\u255D
+            ╔#{"=" * 66}╗
+            ║                    Ralph Wiggum Status                           ║
+            ╚#{"=" * 66}╝
           HEADER
         end
 
@@ -40,14 +40,14 @@ module Ralph
           if state&.active
             print_active_loop(state)
           else
-            puts "\u23F9\uFE0F  No active loop"
+            puts "⏹️  No active loop"
           end
         end
 
         def print_active_loop(state)
           elapsed = Helpers.now_ms - (Time.parse(state.started_at).to_f * 1000).to_i
           elapsed_str = Helpers.format_duration_long(elapsed)
-          puts "\u{1F504} ACTIVE LOOP"
+          puts "🔄 ACTIVE LOOP"
           max_str = state.max_iterations > 0 ? " / #{state.max_iterations}" : " (unlimited)"
           puts "   Iteration:    #{state.iteration}#{max_str}"
           puts "   Started:      #{state.started_at}"
@@ -72,7 +72,7 @@ module Ralph
         def print_pending_context(context)
           return unless context
 
-          puts "\n\u{1F4DD} PENDING CONTEXT (will be injected next iteration):"
+          puts "\n📝 PENDING CONTEXT (will be injected next iteration):"
           puts "   #{context.split("\n").join("\n   ")}"
         end
 
@@ -83,16 +83,16 @@ module Ralph
               tasks = Tasks.parse(tasks_content)
               print_current_tasks(tasks)
             rescue StandardError
-              puts "\n\u{1F4CB} CURRENT TASKS: (error reading tasks)"
+              puts "\n📋 CURRENT TASKS: (error reading tasks)"
             end
           else
-            puts "\n\u{1F4CB} CURRENT TASKS: (no tasks file found)"
+            puts "\n📋 CURRENT TASKS: (no tasks file found)"
           end
         end
 
         def print_current_tasks(tasks)
           if tasks.any?
-            puts "\n\u{1F4CB} CURRENT TASKS:"
+            puts "\n📋 CURRENT TASKS:"
             tasks.each_with_index do |task, i|
               icon = tasks.status_icon(task.status)
               puts "   #{i + 1}. #{icon} #{task.text}"
@@ -105,14 +105,14 @@ module Ralph
             in_progress = tasks.count { |t| t.status == :in_progress }
             puts "\n   Progress: #{complete}/#{tasks.length} complete, #{in_progress} in progress"
           else
-            puts "\n\u{1F4CB} CURRENT TASKS: (no tasks found)"
+            puts "\n📋 CURRENT TASKS: (no tasks found)"
           end
         end
 
         def print_history(history)
           return unless history.iterations.any?
 
-          puts "\n\u{1F4CA} HISTORY (#{history.iterations.length} iterations)"
+          puts "\n📊 HISTORY (#{history.iterations.length} iterations)"
           puts "   Total time:   #{Helpers.format_duration_long(history.total_duration_ms)}"
 
           recent = history.iterations.last(5)
@@ -134,18 +134,18 @@ module Ralph
                       .map { |k, v| "#{k}:#{v}" }
                       .join(" ")
             status_icon = if iter.completion_detected
-              "\u2705"
+              "✅"
             elsif iter.exit_code != 0
-              "\u274C"
+              "❌"
             else
-              "\u{1F504}"
+              "🔄"
             end
             puts "   #{status_icon} ##{iter.iteration}: #{Helpers.format_duration_long(iter.duration_ms)} | #{tools.empty? ? "no tools" : tools}"
           end
         end
 
         def print_struggle_warnings(si)
-          puts "\n\u26A0\uFE0F  STRUGGLE INDICATORS:"
+          puts "\n⚠️  STRUGGLE INDICATORS:"
           if si.no_progress_iterations >= 3
             puts "   - No file changes in #{si.no_progress_iterations} iterations"
           end
@@ -159,7 +159,7 @@ module Ralph
           top_errors.each do |error, count|
             puts "   - Same error #{count}x: \"#{error[0, 50]}...\""
           end
-          puts "\n   \u{1F4A1} Consider using: ralph --add-context \"your hint here\""
+          puts "\n   💡 Consider using: ralph --add-context \"your hint here\""
         end
 
         def print_footer

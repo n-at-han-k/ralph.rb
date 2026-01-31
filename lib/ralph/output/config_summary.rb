@@ -26,7 +26,7 @@ module Ralph
         puts "Permissions: auto-approve all tools" if allow_all
         puts ""
         puts "Starting loop... (Ctrl+C to stop)"
-        puts "\u2550" * 68
+        puts "═" * 68
       end
     end
   end

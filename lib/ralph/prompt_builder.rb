@@ -98,24 +98,24 @@ module Ralph
 
         task_instructions = if current_task
           <<~INST
-            \u{1F504} CURRENT TASK: "#{current_task.text}"
+            🔄 CURRENT TASK: "#{current_task.text}"
                Focus on completing this specific task.
                When done: Mark as [x] in .ralph/ralph-tasks.md and output <promise>#{state.task_promise}</promise>
           INST
         elsif next_task
           <<~INST
-            \u{1F4CD} NEXT TASK: "#{next_task.text}"
+            📍 NEXT TASK: "#{next_task.text}"
                Mark as [/] in .ralph/ralph-tasks.md before starting.
                When done: Mark as [x] and output <promise>#{state.task_promise}</promise>
           INST
         elsif tasks.all_complete?
           <<~INST
-            \u2705 ALL TASKS COMPLETE!
+            ✅ ALL TASKS COMPLETE!
                Output <promise>#{state.completion_promise}</promise> to finish.
           INST
         else
           <<~INST
-            \u{1F4CB} No tasks found. Add tasks to .ralph/ralph-tasks.md or use `ralph --add-task`
+            📋 No tasks found. Add tasks to .ralph/ralph-tasks.md or use `ralph --add-task`
           INST
         end
 

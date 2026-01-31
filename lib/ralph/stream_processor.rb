@@ -40,7 +40,7 @@ module Ralph
         end
       }
 
-      handle_line = lambda { |line, is_error|
+      line = lambda { |line, is_error|
         mutex.synchronize { last_activity_at = Helpers.now_ms }
         tool = agent.parse_tool_output.call(line)
         if tool
@@ -78,7 +78,7 @@ module Ralph
             elapsed = Helpers.format_duration(now - iteration_start)
             la = mutex.synchronize { last_activity_at }
             since_activity = Helpers.format_duration(now - la)
-            puts "\u23F3 working... elapsed #{elapsed} \u00B7 last activity #{since_activity} ago"
+            puts "⏳ working... elapsed #{elapsed} · last activity #{since_activity} ago"
             mutex.synchronize { last_printed_at = Helpers.now_ms }
           end
         end
@@ -94,11 +94,11 @@ module Ralph
           buffer << chunk
           while (idx = buffer.index("\n"))
             line = buffer.slice!(0, idx + 1).chomp
-            handle_line.call(line, false)
+            line.call(line, false)
           end
         end
         # Flush remaining buffer
-        handle_line.call(buffer, false) unless buffer.empty?
+        line.call(buffer, false) unless buffer.empty?
       rescue IOError
         # stream closed
       end
@@ -111,10 +111,10 @@ module Ralph
           buffer << chunk
           while (idx = buffer.index("\n"))
             line = buffer.slice!(0, idx + 1).chomp
-            handle_line.call(line, true)
+            line.call(line, true)
           end
         end
-        handle_line.call(buffer, true) unless buffer.empty?
+        line.call(buffer, true) unless buffer.empty?
       rescue IOError
         # stream closed
       end

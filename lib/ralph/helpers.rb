@@ -49,7 +49,7 @@ module Ralph
 
       parts = shown.map { |name, count| "#{name} #{count}" }
       parts << "+#{remaining} more" if remaining > 0
-      parts.join(" \u2022 ")
+      parts.join(" • ")
     end
 
     def collect_tool_summary_from_text(text, agent)

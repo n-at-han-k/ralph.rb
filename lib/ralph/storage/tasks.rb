@@ -47,6 +47,31 @@ module Ralph
           File.exist?(tasks_path)
         end
 
+        # --- Single Task Operations ---
+
+        # Add a new task by description string.
+        # Creates the tasks file if it doesn't exist.
+        def add_task(description)
+          tasks = load_tasks || TasksCollection.new
+          task = Task.new(text: description, status: :todo)
+          tasks.add(task)
+          save_tasks(tasks)
+          task
+        end
+
+        # Remove a task by 1-based index.
+        # Returns the removed Task.
+        # Raises IndexError if index is out of range.
+        # Raises RuntimeError if no tasks file exists.
+        def remove_task(index)
+          raise "No tasks file found" unless tasks_exist?
+
+          tasks = load_tasks
+          removed = tasks.remove_at(index)
+          save_tasks(tasks)
+          removed
+        end
+
         # --- Task Initialization ---
         def initialize_tasks_file
           FileUtils.mkdir_p(state_dir)
@@ -114,6 +139,22 @@ module Ralph
       def length = @tasks.length
       def any?   = @tasks.any?
 
+      # Add a task to the collection
+      def add(task)
+        @tasks << task
+        self
+      end
+
+      # Remove a task (and its subtasks) by 1-based index.
+      # Returns the removed Task, or raises IndexError if out of range.
+      def remove_at(index)
+        if index < 1 || index > @tasks.length
+          raise IndexError, "Task index #{index} is out of range (1-#{@tasks.length})"
+        end
+
+        @tasks.delete_at(index - 1)
+      end
+
       def self.parse(content)
         tasks = []
         current_task = nil
@@ -178,17 +219,17 @@ module Ralph
 
       def status_icon(status)
         case status
-        when :complete    then "\u2705"
-        when :in_progress then "\u{1F504}"
-        else "\u{23F8}\uFE0F"
+        when :complete    then "✅"
+        when :in_progress then "🔄"
+        else "⏸️"
         end
       end
 
       def self.status_icon(status)
         case status
-        when :complete    then "\u2705"
-        when :in_progress then "\u{1F504}"
-        else "\u{23F8}\uFE0F"
+        when :complete    then "✅"
+        when :in_progress then "🔄"
+        else "⏸️"
         end
       end
     end

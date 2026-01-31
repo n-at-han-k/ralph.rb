@@ -4,7 +4,7 @@ module Ralph
   module Output
     class AutoCommitNotice
       def self.call(iteration:)
-        puts "\u{1F4DD} Auto-committed changes"
+        puts "📝 Auto-committed changes"
       end
     end
   end

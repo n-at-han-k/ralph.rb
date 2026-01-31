@@ -6,7 +6,7 @@ module Ralph
       def self.call(iteration:, elapsed_ms:, tool_counts:, exit_code:, completion_detected:)
         tool_summary = Helpers.format_tool_summary(tool_counts)
         puts "\nIteration Summary"
-        puts "\u2500" * 68
+        puts "─" * 68
         puts "Iteration: #{iteration}"
         puts "Elapsed:   #{Helpers.format_duration(elapsed_ms)}"
         if tool_summary && !tool_summary.empty?

@@ -56,6 +56,10 @@ module Ralph
       Context.context_path
     end
 
+    def append_context(new_entry)
+      Context.append_context(new_entry)
+    end
+
     # --- Tasks Management ---
     def save_tasks(tasks)
       Tasks.save_tasks(tasks)
@@ -75,6 +79,14 @@ module Ralph
 
     def tasks_exist?
       Tasks.tasks_exist?
+    end
+
+    def add_task(description)
+      Tasks.add_task(description)
+    end
+
+    def remove_task(index)
+      Tasks.remove_task(index)
     end
 
     # --- File Change Detection ---

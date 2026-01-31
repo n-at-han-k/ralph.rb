@@ -4,7 +4,7 @@ module Ralph
   module Output
     class ContextConsumed
       def self.call
-        puts "\u{1F4DD} Context was consumed this iteration"
+        puts "📝 Context was consumed this iteration"
       end
     end
   end

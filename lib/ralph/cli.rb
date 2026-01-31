@@ -184,19 +184,19 @@ module Ralph
         show_status(@options)
         exit 0
       when :add_context
-        handle_add_context(command_arg)
+        add_context(command_arg)
         exit 0
       when :clear_context
-        handle_clear_context
+        clear_context
         exit 0
       when :list_tasks
-        handle_list_tasks
+        list_tasks
         exit 0
       when :add_task
-        handle_add_task(command_arg)
+        add_task(command_arg)
         exit 0
       when :remove_task
-        handle_remove_task(command_arg)
+        remove_task(command_arg)
         exit 0
       end
 
@@ -225,19 +225,12 @@ module Ralph
         Output::Status.call(options: options)
       end
 
-      def handle_add_context(context_text)
-        FileUtils.mkdir_p(State.state_dir)
+      def add_context(context_text)
         timestamp = Time.now.utc.iso8601
         new_entry = "\n## Context added at #{timestamp}\n#{context_text}\n"
+        Storage.append_context(new_entry)
 
-        if File.exist?(State.context_path)
-          existing = File.read(State.context_path)
-          File.write(State.context_path, existing + new_entry)
-        else
-          File.write(State.context_path, "# Ralph Loop Context\n#{new_entry}")
-        end
-
-        puts "\u2705 Context added for next iteration"
+        puts "✅ Context added for next iteration"
         puts "   File: #{State.context_path}"
 
         state = State.load_state
@@ -248,95 +241,48 @@ module Ralph
         end
       end
 
-      def handle_clear_context
-        if File.exist?(State.context_path)
-          File.delete(State.context_path)
-          puts "\u2705 Context cleared"
+      def clear_context
+        if Storage.load_context
+          Storage.clear_context
+          puts "✅ Context cleared"
         else
-          puts "\u2139\uFE0F  No pending context to clear"
+          puts "ℹ️  No pending context to clear"
         end
       end
 
-      def handle_list_tasks
-        unless File.exist?(State.tasks_path)
+      def list_tasks
+        tasks = Storage.load_tasks
+        unless tasks
           puts "No tasks file found. Use --add-task to create your first task."
           return
         end
 
-        begin
-          content = File.read(State.tasks_path)
-          tasks = Tasks.parse(content)
-          tasks.display_with_indices
-        rescue StandardError => e
-          $stderr.puts "Error reading tasks file: #{e}"
-          exit 1
-        end
+        tasks.display_with_indices
+      rescue StandardError => e
+        $stderr.puts "Error reading tasks file: #{e}"
+        exit 1
       end
 
-      def handle_add_task(description)
-        FileUtils.mkdir_p(State.state_dir)
-
-        begin
-          content = if File.exist?(State.tasks_path)
-            File.read(State.tasks_path)
-          else
-            "# Ralph Tasks\n\n"
-          end
-
-          new_content = content.rstrip + "\n" + "- [ ] #{description}\n"
-          File.write(State.tasks_path, new_content)
-          puts "\u2705 Task added: \"#{description}\""
-        rescue StandardError => e
-          $stderr.puts "Error adding task: #{e}"
-          exit 1
-        end
+      def add_task(description)
+        Storage.add_task(description)
+        puts "✅ Task added: \"#{description}\""
+      rescue StandardError => e
+        $stderr.puts "Error adding task: #{e}"
+        exit 1
       end
 
-      def handle_remove_task(task_index)
-        unless File.exist?(State.tasks_path)
-          $stderr.puts "Error: No tasks file found"
-          exit 1
-        end
-
-        begin
-          content = File.read(State.tasks_path)
-          tasks = Tasks.parse(content)
-
-          if task_index < 1 || task_index > tasks.length
-            $stderr.puts "Error: Task index #{task_index} is out of range (1-#{tasks.length})"
-            exit 1
-          end
-
-          lines = content.split("\n")
-          new_lines = []
-          in_removed_task = false
-          current_task_line = 0
-
-          lines.each do |line|
-            if line.match?(/^- \[/)
-              current_task_line += 1
-              if current_task_line == task_index
-                in_removed_task = true
-                next
-              else
-                in_removed_task = false
-              end
-            end
-
-            # Skip indented content under removed task
-            if in_removed_task && line.match?(/^\s+/) && !line.strip.empty?
-              next
-            end
-
-            new_lines << line
-          end
-
-          File.write(State.tasks_path, new_lines.join("\n"))
-          puts "\u2705 Removed task #{task_index} and its subtasks"
-        rescue StandardError => e
-          $stderr.puts "Error removing task: #{e}"
-          exit 1
-        end
+      def remove_task(task_index)
+        Storage.remove_task(task_index)
+        puts "✅ Removed task #{task_index} and its subtasks"
+      rescue IndexError => e
+        $stderr.puts "Error: #{e.message}"
+        exit 1
+      rescue RuntimeError => e
+        $stderr.puts "Error: #{e.message}"
+        exit 1
+      rescue StandardError => e
+        $stderr.puts "Error removing task: #{e}"
+        exit 1
       end
   end
 end

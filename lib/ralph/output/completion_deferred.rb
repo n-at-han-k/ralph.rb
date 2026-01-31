@@ -4,7 +4,7 @@ module Ralph
   module Output
     class CompletionDeferred
       def self.call(min_iterations:, next_iteration:)
-        puts "\n\u23F3 Completion promise detected, but minimum iterations (#{min_iterations}) not yet reached."
+        puts "\n⏳ Completion promise detected, but minimum iterations (#{min_iterations}) not yet reached."
         puts "   Continuing to iteration #{next_iteration}..."
       end
     end

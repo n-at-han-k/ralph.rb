@@ -15,7 +15,7 @@ Each row is one inline output site in `loop.rb` that becomes its own `Output::` 
 | 3 | `print_iteration_header` | line 206 | `Output::IterationHeader` | stdout | `iteration:`, `max_iterations:`, `min_iterations:` |
 | 4 | `print_iteration_summary` | line 456 | `Output::IterationSummary` | stdout | `iteration:`, `elapsed_ms:`, `tool_counts:`, `exit_code:`, `completion_detected:` |
 | 5 | `max_iterations_reached?` output | line 198 | `Output::MaxIterationsReached` | stdout | `max_iterations:`, `total_duration_ms:` |
-| 6 | `handle_completion` box | line 389 | `Output::CompletionDetected` | stdout | `completion_promise:`, `iteration:`, `total_duration_ms:` |
+| 6 | `completion` box | line 389 | `Output::CompletionDetected` | stdout | `completion_promise:`, `iteration:`, `total_duration_ms:` |
 | 7 | Min iterations not yet reached | line 384 | `Output::CompletionDeferred` | stdout | `min_iterations:`, `next_iteration:` |
 | 8 | `warn_if_struggling` | line 346 | `Output::StruggleWarning` | stdout | `no_progress_iterations:`, `short_iterations:` |
 | 9 | `warn_nonzero_exit` | line 370 | `Output::NonzeroExitWarning` | stderr | `agent_name:`, `exit_code:` |
@@ -24,7 +24,7 @@ Each row is one inline output site in `loop.rb` that becomes its own `Output::` 
 | 12 | `consume_context` | line 403 | `Output::ContextConsumed` | stdout | (no args) |
 | 13 | `auto_commit_changes` | line 416 | `Output::AutoCommitNotice` | stdout | `iteration:` |
 | 14 | Active loop error | line 49 | `Output::ActiveLoopError` | stderr | `iteration:`, `started_at:`, `state_path:` |
-| 15 | `handle_iteration_error` | line 431 | `Output::IterationError` | stderr | `iteration:`, `error:` |
+| 15 | `iteration_error` | line 431 | `Output::IterationError` | stderr | `iteration:`, `error:` |
 | 16 | Tasks file created | line 124 | `Output::TasksFileCreated` | stdout | `path:` |
 
 Existing: `Output::NoPluginWarning` (line 57) — already extracted.

@@ -205,7 +205,7 @@ module Ralph
         warn_nonzero_exit(result.exit_code)
         report_task_completion(task_completion_detected, result.completion_detected)
 
-        outcome = handle_completion(result.completion_detected)
+        outcome = completion(result.completion_detected)
         return outcome if outcome == :break
 
         consume_context(context_at_start)
@@ -214,11 +214,9 @@ module Ralph
 
         :continue
       rescue StandardError => e
-        handle_iteration_error(e, iteration_start)
+        iteration_error(e, iteration_start)
         :continue
       end
-
-      # ---------- History & struggle tracking ----------
 
       # ---------- History & struggle tracking ----------
 
@@ -298,7 +296,7 @@ module Ralph
         Output::TaskCompletion.call(task_promise: @task_promise, next_iteration: @state.iteration + 1)
       end
 
-      def handle_completion(completion_detected)
+      def completion(completion_detected)
         return :continue unless completion_detected
 
         if @state.iteration < @min_iterations
@@ -336,7 +334,7 @@ module Ralph
         # git commit failed, ok
       end
 
-      def handle_iteration_error(error, iteration_start)
+      def iteration_error(error, iteration_start)
         if @current_pid
           begin
             Process.kill("TERM", @current_pid)
