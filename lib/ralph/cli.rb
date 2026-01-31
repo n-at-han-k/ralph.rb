@@ -9,6 +9,24 @@ require_relative "state"
 require_relative "tasks"
 require_relative "loop"
 
+require_relative "output/status_header"
+require_relative "output/active_loop_status"
+require_relative "output/no_active_loop"
+require_relative "output/pending_context"
+require_relative "output/current_tasks"
+require_relative "output/no_tasks_file"
+require_relative "output/tasks_file_error"
+require_relative "output/history_header"
+require_relative "output/total_time"
+require_relative "output/recent_iterations"
+require_relative "output/struggle_warning_header"
+require_relative "output/no_progress_warning"
+require_relative "output/short_iterations_warning"
+require_relative "output/repeated_error_warning"
+require_relative "output/context_hint"
+require_relative "output/status_footer"
+
+
 module Ralph
   class CLI
     def initialize
@@ -230,23 +248,6 @@ module Ralph
     # --- Command handlers ---
 
     def show_status(options = @options)
-      require_relative "output/status_header"
-      require_relative "output/active_loop_status"
-      require_relative "output/no_active_loop"
-      require_relative "output/pending_context"
-      require_relative "output/current_tasks"
-      require_relative "output/no_tasks_file"
-      require_relative "output/tasks_file_error"
-      require_relative "output/history_header"
-      require_relative "output/total_time"
-      require_relative "output/recent_iterations"
-      require_relative "output/struggle_warning_header"
-      require_relative "output/no_progress_warning"
-      require_relative "output/short_iterations_warning"
-      require_relative "output/repeated_error_warning"
-      require_relative "output/context_hint"
-      require_relative "output/status_footer"
-
       state = State.load_state
       history = State.load_history
       context = State.load_context

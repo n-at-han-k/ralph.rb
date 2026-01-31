@@ -9,31 +9,6 @@ require_relative "stream_processor"
 require_relative "iteration"
 
 module Ralph
-  # Single iteration record
-  IterationHistory = Struct.new(
-    :iteration,           # Integer
-    :started_at,          # String (ISO 8601)
-    :ended_at,            # String (ISO 8601)
-    :duration_ms,         # Integer
-    :tools_used,          # Hash<String, Integer>
-    :files_modified,      # Array<String>
-    :exit_code,           # Integer
-    :completion_detected, # Boolean
-    :errors,              # Array<String>
-    keyword_init: true
-  )
-
-  # Struggle indicators
-  StruggleIndicators = Struct.new(
-    :repeated_errors,        # Hash<String, Integer>
-    :no_progress_iterations, # Integer
-    :short_iterations,       # Integer
-    keyword_init: true
-  ) do
-    def self.empty
-      new(repeated_errors: {}, no_progress_iterations: 0, short_iterations: 0)
-    end
-  end
 
   class Loop
     def call(

@@ -30,6 +30,7 @@ Design documentation for Ralph.rb, a Ruby CLI that runs iterative AI development
 | Spec | Code | Purpose |
 |------|------|---------|
 | [cli.md](./cli.md) | [lib/ralph/cli.rb](../lib/ralph/cli.rb) | CLI options, subcommands, prompt resolution, error handling |
+| [storage/local-data-structure.md](./storage/local-data-structure.md) | [lib/ralph/storage/](../lib/ralph/storage/) | Ralph state persistence: .ralph/ directory, storage module architecture, data lifecycle |
 
 ## Output
 
