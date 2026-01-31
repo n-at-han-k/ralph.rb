@@ -7,6 +7,22 @@ require_relative "state"
 require_relative "tasks"
 require_relative "prompt_builder"
 require_relative "stream_processor"
+require_relative "output/banner"
+require_relative "output/config_summary"
+require_relative "output/iteration_header"
+require_relative "output/iteration_summary"
+require_relative "output/max_iterations_reached"
+require_relative "output/completion_detected"
+require_relative "output/completion_deferred"
+require_relative "output/struggle_warning"
+require_relative "output/nonzero_exit_warning"
+require_relative "output/plugin_error"
+require_relative "output/task_completion"
+require_relative "output/context_consumed"
+require_relative "output/auto_commit_notice"
+require_relative "output/active_loop_error"
+require_relative "output/iteration_error"
+require_relative "output/tasks_file_created"
 
 module Ralph
   class Loop
@@ -46,9 +62,7 @@ module Ralph
 
       State.load_state.then do |existing_state|
         if existing_state&.active
-          $stderr.puts "Error: A Ralph loop is already active (iteration #{existing_state.iteration})"
-          $stderr.puts "Started at: #{existing_state.started_at}"
-          $stderr.puts "To cancel it, press Ctrl+C in its terminal or delete #{State.state_path}"
+          Output::ActiveLoopError.call(iteration: existing_state.iteration, started_at: existing_state.started_at, state_path: State.state_path)
           exit 1
         else
           @agent_config = resolve_agent!(agent_type)
@@ -63,12 +77,46 @@ module Ralph
             end
           end
 
-          warn_agent_plugins
-          print_banner
-          initialize_state
-          initialize_tasks_file
-          initialize_history
-          print_config_summary
+          Output::Banner.call(agent_name: @agent_config.config_name)
+
+          @state = RalphState.new( active: true,
+            iteration: 1,
+            min_iterations: @min_iterations,
+            max_iterations: @max_iterations,
+            completion_promise: @completion_promise,
+            tasks_mode: @tasks_mode,
+            task_promise: @task_promise,
+            prompt: @prompt,
+            started_at: Time.now.utc.iso8601,
+            model: @model,
+            agent: @agent_type
+
+          ).tap { State.save_state _1 }
+
+
+          if @tasks_mode && !File.exist?(State.tasks_path)
+            FileUtils.mkdir_p(State.state_dir)
+            File.write(State.tasks_path, "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n")
+            Output::TasksFileCreated.call(path: State.tasks_path)
+          end
+
+          @history = RalphHistory.empty.tap { State.save_history _1 }
+
+          Output::ConfigSummary.call(
+            prompt: @prompt,
+            prompt_source: @prompt_source,
+            completion_promise: @completion_promise,
+            tasks_mode: @tasks_mode,
+            task_promise: @task_promise,
+            min_iterations: @min_iterations,
+            max_iterations: @max_iterations,
+            agent_name: @agent_config.config_name,
+            model: @model,
+            disable_plugins: @disable_plugins,
+            agent_type: @agent_config.type,
+            allow_all: @allow_all
+          )
+
           setup_signal_handler
           run_loop
         end
@@ -77,395 +125,303 @@ module Ralph
 
     private
 
-    def resolve_agent!(agent_type)
-      Agents.resolve(agent_type).tap do |agent_config|
-        Agents.validate!(agent_config)
-      end
-    end
-
-    def warn_agent_plugins
-      if @disable_plugins
-      end
-    end
-
-    def print_banner
-      puts <<~BANNER
-
-        \u2554#{"=" * 66}\u2557
-        \u2551                    Ralph Wiggum Loop                            \u2551
-        \u2551         Iterative AI Development with #{@agent_config.config_name.ljust(20)}        \u2551
-        \u255A#{"=" * 66}\u255D
-      BANNER
-    end
-
-    def initialize_state
-      @state = RalphState.new(
-        active: true,
-        iteration: 1,
-        min_iterations: @min_iterations,
-        max_iterations: @max_iterations,
-        completion_promise: @completion_promise,
-        tasks_mode: @tasks_mode,
-        task_promise: @task_promise,
-        prompt: @prompt,
-        started_at: Time.now.utc.iso8601,
-        model: @model,
-        agent: @agent_type
-      )
-      State.save_state(@state)
-    end
-
-    def initialize_tasks_file
-      return unless @tasks_mode && !File.exist?(State.tasks_path)
-
-      FileUtils.mkdir_p(State.state_dir)
-      File.write(State.tasks_path,
-        "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n")
-      puts "\u{1F4CB} Created tasks file: #{State.tasks_path}"
-    end
-
-    def initialize_history
-      @history = RalphHistory.empty
-      State.save_history(@history)
-    end
-
-    def print_config_summary
-      prompt_preview = @prompt.gsub(/\s+/, " ")[0, 80] + (@prompt.length > 80 ? "..." : "")
-      if @prompt_source && !@prompt_source.empty?
-        puts "Task: #{@prompt_source}"
-        puts "Preview: #{prompt_preview}"
-      else
-        puts "Task: #{prompt_preview}"
-      end
-      puts "Completion promise: #{@completion_promise}"
-      if @tasks_mode
-        puts "Tasks mode: ENABLED"
-        puts "Task promise: #{@task_promise}"
-      end
-      puts "Min iterations: #{@min_iterations}"
-      puts "Max iterations: #{@max_iterations > 0 ? @max_iterations : "unlimited"}"
-      puts "Agent: #{@agent_config.config_name}"
-      puts "Model: #{@model}" if @model && !@model.empty?
-      if @disable_plugins && @agent_config.type == :opencode
-        puts "OpenCode plugins: non-auth plugins disabled"
-      end
-      puts "Permissions: auto-approve all tools" if @allow_all
-      puts ""
-      puts "Starting loop... (Ctrl+C to stop)"
-      puts "\u2550" * 68
-    end
-
-    def setup_signal_handler
-      Signal.trap("INT") do
-        if @stopping
-          $stderr.puts "\nForce stopping..."
-          exit 1
+      def resolve_agent!(agent_type)
+        Agents.resolve(agent_type).tap do |agent_config|
+          Agents.validate!(agent_config)
         end
-        @stopping = true
-        $stderr.puts "\nGracefully stopping Ralph loop..."
+      end
+
+      def setup_signal_handler
+        Signal.trap("INT") do
+          if @stopping
+            $stderr.puts "\nForce stopping..."
+            exit 1
+          end
+          @stopping = true
+          $stderr.puts "\nGracefully stopping Ralph loop..."
+          if @current_pid
+            begin
+              Process.kill("TERM", @current_pid)
+            rescue StandardError
+              # process may have exited
+            end
+          end
+          State.clear_state
+          $stderr.puts "Loop cancelled."
+          exit 0
+        end
+      end
+
+      # ---------- Main loop ----------
+
+      def run_loop
+        loop do
+          break if @stopping
+          break if max_iterations_reached?
+
+          Output::IterationHeader.call(
+            iteration: @state.iteration,
+            max_iterations: @max_iterations,
+            min_iterations: @min_iterations
+          )
+          outcome = run_iteration
+          break if outcome == :break
+
+          advance_iteration
+          sleep 1
+        end
+      end
+
+      def max_iterations_reached?
+        return false unless @max_iterations > 0 && @state.iteration > @max_iterations
+
+        Output::MaxIterationsReached.call(max_iterations: @max_iterations, total_duration_ms: @history.total_duration_ms)
+        State.clear_state
+        true
+      end
+
+      def advance_iteration
+        @state.iteration += 1
+        State.save_state(@state)
+      end
+
+      # ---------- Single iteration ----------
+
+      def run_iteration
+        context_at_start = State.load_context
+        snapshot_before  = State.capture_file_snapshot
+        iteration_start  = Helpers.now_ms
+
+        result, exit_code = execute_agent(iteration_start)
+        combined_output   = "#{result.stdout_text}\n#{result.stderr_text}"
+        iteration_duration = Helpers.now_ms - iteration_start
+
+        completion_detected      = Helpers.check_completion(combined_output, @completion_promise)
+        task_completion_detected = @tasks_mode ? Helpers.check_completion(combined_output, @task_promise) : false
+
+        print_iteration_summary(
+          iteration: @state.iteration,
+          elapsed_ms: iteration_duration,
+          tool_counts: result.tool_counts,
+          exit_code: exit_code,
+          completion_detected: completion_detected
+        )
+
+        record_iteration(iteration_start, iteration_duration, result, exit_code,
+                          completion_detected, snapshot_before, combined_output)
+
+        warn_if_struggling
+        detect_plugin_error!(combined_output)
+        warn_nonzero_exit(exit_code)
+        report_task_completion(task_completion_detected, completion_detected)
+
+        outcome = handle_completion(completion_detected)
+        return outcome if outcome == :break
+
+        consume_context(context_at_start)
+
+        auto_commit_changes if @auto_commit
+
+        :continue
+      rescue StandardError => e
+        handle_iteration_error(e, iteration_start)
+        :continue
+      end
+
+      # ---------- Agent execution ----------
+
+      def execute_agent(iteration_start)
+        full_prompt = PromptBuilder.build(@state, @agent_config)
+        cmd_args = @agent_config.build_args.call(full_prompt, @model, { allow_all_permissions: @allow_all })
+        env = @agent_config.build_env.call(
+          filter_plugins: @disable_plugins,
+          allow_all_permissions: @allow_all
+        )
+        cmd = [@agent_config.command] + cmd_args
+
+        if @stream_output
+          StreamProcessor.stream(
+            cmd: cmd,
+            env: env,
+            compact_tools: !@verbose_tools,
+            tool_summary_interval_ms: 3000,
+            heartbeat_interval_ms: 10000,
+            iteration_start: iteration_start,
+            agent: @agent_config
+          )
+        else
+          result, exit_code = StreamProcessor.capture(cmd: cmd, env: env, agent: @agent_config)
+          $stderr.puts result.stderr_text unless result.stderr_text.empty?
+          puts result.stdout_text
+          [result, exit_code]
+        end
+      end
+
+      # ---------- History & struggle tracking ----------
+
+      def record_iteration(iteration_start, iteration_duration, result, exit_code,
+                           completion_detected, snapshot_before, combined_output)
+        snapshot_after  = State.capture_file_snapshot
+        files_modified  = State.modified_files_since_snapshot(snapshot_before, snapshot_after)
+        errors          = Helpers.extract_errors(combined_output)
+
+        tool_counts = result.tool_counts.is_a?(Hash) ? result.tool_counts : result.tool_counts.to_h
+
+        iter_record = IterationHistory.new(
+          iteration: @state.iteration,
+          started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
+          ended_at: Time.now.utc.iso8601,
+          duration_ms: iteration_duration,
+          tools_used: tool_counts,
+          files_modified: files_modified,
+          exit_code: exit_code,
+          completion_detected: completion_detected,
+          errors: errors
+        )
+
+        @history.iterations << iter_record
+        @history.total_duration_ms += iteration_duration
+        update_struggle_indicators(files_modified, iteration_duration, errors)
+        State.save_history(@history)
+      end
+
+      def update_struggle_indicators(files_modified, iteration_duration, errors)
+        si = @history.struggle_indicators
+
+        if files_modified.empty?
+          si.no_progress_iterations += 1
+        else
+          si.no_progress_iterations = 0
+        end
+
+        if iteration_duration < 30_000
+          si.short_iterations += 1
+        else
+          si.short_iterations = 0
+        end
+
+        if errors.empty?
+          si.repeated_errors = {}
+        else
+          errors.each do |error|
+            key = error[0, 100]
+            si.repeated_errors[key] = (si.repeated_errors[key] || 0) + 1
+          end
+        end
+      end
+
+      def warn_if_struggling
+        si = @history.struggle_indicators
+        return unless @state.iteration > 2 && (si.no_progress_iterations >= 3 || si.short_iterations >= 3)
+
+        Output::StruggleWarning.call(
+          no_progress_iterations: si.no_progress_iterations,
+          short_iterations: si.short_iterations
+        )
+      end
+
+      # ---------- Completion & error handling ----------
+
+      def detect_plugin_error!(combined_output)
+        return unless @agent_config.type == :opencode && Helpers.detect_placeholder_plugin_error(combined_output)
+
+        Output::PluginError.call
+        State.clear_state
+        exit 1
+      end
+
+      def warn_nonzero_exit(exit_code)
+        return if exit_code == 0
+
+        Output::NonzeroExitWarning.call(agent_name: @agent_config.config_name, exit_code: exit_code)
+      end
+
+      def report_task_completion(task_completion_detected, completion_detected)
+        return unless task_completion_detected && !completion_detected
+
+        Output::TaskCompletion.call(task_promise: @task_promise, next_iteration: @state.iteration + 1)
+      end
+
+      def handle_completion(completion_detected)
+        return :continue unless completion_detected
+
+        if @state.iteration < @min_iterations
+          Output::CompletionDeferred.call(min_iterations: @min_iterations, next_iteration: @state.iteration + 1)
+          return :continue
+        end
+
+        Output::CompletionDetected.call(
+          completion_promise: @completion_promise,
+          iteration: @state.iteration,
+          total_duration_ms: @history.total_duration_ms
+        )
+        State.clear_state
+        State.clear_history
+        State.clear_context
+        :break
+      end
+
+      def consume_context(context_at_start)
+        if context_at_start
+          Output::ContextConsumed.call
+          State.clear_context
+        end
+      end
+
+      def auto_commit_changes
+        status = `git status --porcelain 2>/dev/null`.strip
+        return if status.empty?
+
+        system("git", "add", "-A")
+        system("git", "commit", "-m", "Ralph iteration #{@state.iteration}: work in progress",
+               [:out, :err] => File::NULL)
+        Output::AutoCommitNotice.call(iteration: @state.iteration)
+      rescue StandardError
+        # git commit failed, ok
+      end
+
+      def handle_iteration_error(error, iteration_start)
         if @current_pid
           begin
             Process.kill("TERM", @current_pid)
           rescue StandardError
             # process may have exited
           end
+          @current_pid = nil
         end
-        State.clear_state
-        $stderr.puts "Loop cancelled."
-        exit 0
-      end
-    end
 
-    # ---------- Main loop ----------
+        Output::IterationError.call(iteration: @state.iteration, error: error)
 
-    def run_loop
-      loop do
-        break if @stopping
-        break if max_iterations_reached?
-
-        print_iteration_header
-        outcome = run_iteration
-        break if outcome == :break
+        iteration_duration = Helpers.now_ms - iteration_start
+        error_record = IterationHistory.new(
+          iteration: @state.iteration,
+          started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
+          ended_at: Time.now.utc.iso8601,
+          duration_ms: iteration_duration,
+          tools_used: {},
+          files_modified: [],
+          exit_code: -1,
+          completion_detected: false,
+          errors: [error.to_s[0, 200]]
+        )
+        @history.iterations << error_record
+        @history.total_duration_ms += iteration_duration
+        State.save_history(@history)
 
         advance_iteration
-        sleep 1
+        sleep 2
       end
-    end
 
-    def max_iterations_reached?
-      return false unless @max_iterations > 0 && @state.iteration > @max_iterations
+      # ---------- Display ----------
 
-      puts "\n\u2554#{"=" * 66}\u2557"
-      puts "\u2551  Max iterations (#{@max_iterations}) reached. Loop stopped."
-      puts "\u2551  Total time: #{Helpers.format_duration_long(@history.total_duration_ms)}"
-      puts "\u255A#{"=" * 66}\u255D"
-      State.clear_state
-      true
-    end
-
-    def print_iteration_header
-      iter_info = @max_iterations > 0 ? " / #{@max_iterations}" : ""
-      min_info = @min_iterations > 1 && @state.iteration < @min_iterations ? " (min: #{@min_iterations})" : ""
-      puts "\n\u{1F504} Iteration #{@state.iteration}#{iter_info}#{min_info}"
-      puts "\u2500" * 68
-    end
-
-    def advance_iteration
-      @state.iteration += 1
-      State.save_state(@state)
-    end
-
-    # ---------- Single iteration ----------
-
-    def run_iteration
-      context_at_start = State.load_context
-      snapshot_before  = State.capture_file_snapshot
-      iteration_start  = Helpers.now_ms
-
-      result, exit_code = execute_agent(iteration_start)
-      combined_output   = "#{result.stdout_text}\n#{result.stderr_text}"
-      iteration_duration = Helpers.now_ms - iteration_start
-
-      completion_detected      = Helpers.check_completion(combined_output, @completion_promise)
-      task_completion_detected = @tasks_mode ? Helpers.check_completion(combined_output, @task_promise) : false
-
-      print_iteration_summary(
-        iteration: @state.iteration,
-        elapsed_ms: iteration_duration,
-        tool_counts: result.tool_counts,
-        exit_code: exit_code,
-        completion_detected: completion_detected
-      )
-
-      record_iteration(iteration_start, iteration_duration, result, exit_code,
-                        completion_detected, snapshot_before, combined_output)
-
-      warn_if_struggling
-      detect_plugin_error!(combined_output)
-      warn_nonzero_exit(exit_code)
-      report_task_completion(task_completion_detected, completion_detected)
-
-      outcome = handle_completion(completion_detected)
-      return outcome if outcome == :break
-
-      consume_context(context_at_start)
-      auto_commit_changes
-
-      :continue
-    rescue StandardError => e
-      handle_iteration_error(e, iteration_start)
-      :continue
-    end
-
-    # ---------- Agent execution ----------
-
-    def execute_agent(iteration_start)
-      full_prompt = PromptBuilder.build(@state, @agent_config)
-      cmd_args = @agent_config.build_args.call(full_prompt, @model, { allow_all_permissions: @allow_all })
-      env = @agent_config.build_env.call(
-        filter_plugins: @disable_plugins,
-        allow_all_permissions: @allow_all
-      )
-      cmd = [@agent_config.command] + cmd_args
-
-      if @stream_output
-        StreamProcessor.stream(
-          cmd: cmd,
-          env: env,
-          compact_tools: !@verbose_tools,
-          tool_summary_interval_ms: 3000,
-          heartbeat_interval_ms: 10000,
-          iteration_start: iteration_start,
-          agent: @agent_config
+      def print_iteration_summary(iteration:, elapsed_ms:, tool_counts:, exit_code:, completion_detected:)
+        Output::IterationSummary.call(
+          iteration: iteration,
+          elapsed_ms: elapsed_ms,
+          tool_counts: tool_counts,
+          exit_code: exit_code,
+          completion_detected: completion_detected
         )
-      else
-        result, exit_code = StreamProcessor.capture(cmd: cmd, env: env, agent: @agent_config)
-        $stderr.puts result.stderr_text unless result.stderr_text.empty?
-        puts result.stdout_text
-        [result, exit_code]
       end
-    end
-
-    # ---------- History & struggle tracking ----------
-
-    def record_iteration(iteration_start, iteration_duration, result, exit_code,
-                         completion_detected, snapshot_before, combined_output)
-      snapshot_after  = State.capture_file_snapshot
-      files_modified  = State.modified_files_since_snapshot(snapshot_before, snapshot_after)
-      errors          = Helpers.extract_errors(combined_output)
-
-      tool_counts = result.tool_counts.is_a?(Hash) ? result.tool_counts : result.tool_counts.to_h
-
-      iter_record = IterationHistory.new(
-        iteration: @state.iteration,
-        started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
-        ended_at: Time.now.utc.iso8601,
-        duration_ms: iteration_duration,
-        tools_used: tool_counts,
-        files_modified: files_modified,
-        exit_code: exit_code,
-        completion_detected: completion_detected,
-        errors: errors
-      )
-
-      @history.iterations << iter_record
-      @history.total_duration_ms += iteration_duration
-      update_struggle_indicators(files_modified, iteration_duration, errors)
-      State.save_history(@history)
-    end
-
-    def update_struggle_indicators(files_modified, iteration_duration, errors)
-      si = @history.struggle_indicators
-
-      if files_modified.empty?
-        si.no_progress_iterations += 1
-      else
-        si.no_progress_iterations = 0
-      end
-
-      if iteration_duration < 30_000
-        si.short_iterations += 1
-      else
-        si.short_iterations = 0
-      end
-
-      if errors.empty?
-        si.repeated_errors = {}
-      else
-        errors.each do |error|
-          key = error[0, 100]
-          si.repeated_errors[key] = (si.repeated_errors[key] || 0) + 1
-        end
-      end
-    end
-
-    def warn_if_struggling
-      si = @history.struggle_indicators
-      return unless @state.iteration > 2 && (si.no_progress_iterations >= 3 || si.short_iterations >= 3)
-
-      puts "\n\u26A0\uFE0F  Potential struggle detected:"
-      if si.no_progress_iterations >= 3
-        puts "   - No file changes in #{si.no_progress_iterations} iterations"
-      end
-      if si.short_iterations >= 3
-        puts "   - #{si.short_iterations} very short iterations"
-      end
-      puts "   \u{1F4A1} Tip: Use 'ralph --add-context \"hint\"' in another terminal to guide the agent"
-    end
-
-    # ---------- Completion & error handling ----------
-
-    def detect_plugin_error!(combined_output)
-      return unless @agent_config.type == :opencode && Helpers.detect_placeholder_plugin_error(combined_output)
-
-      $stderr.puts "\n\u274C OpenCode tried to load the legacy 'ralph-wiggum' plugin. This package is CLI-only."
-      $stderr.puts "Remove 'ralph-wiggum' from your opencode.json plugin list, or re-run with --no-plugins."
-      State.clear_state
-      exit 1
-    end
-
-    def warn_nonzero_exit(exit_code)
-      return if exit_code == 0
-
-      warn "\n\u26A0\uFE0F  #{@agent_config.config_name} exited with code #{exit_code}. Continuing to next iteration."
-    end
-
-    def report_task_completion(task_completion_detected, completion_detected)
-      return unless task_completion_detected && !completion_detected
-
-      puts "\n\u{1F504} Task completion detected: <promise>#{@task_promise}</promise>"
-      puts "   Moving to next task in iteration #{@state.iteration + 1}..."
-    end
-
-    def handle_completion(completion_detected)
-      return :continue unless completion_detected
-
-      if @state.iteration < @min_iterations
-        puts "\n\u23F3 Completion promise detected, but minimum iterations (#{@min_iterations}) not yet reached."
-        puts "   Continuing to iteration #{@state.iteration + 1}..."
-        return :continue
-      end
-
-      puts "\n\u2554#{"=" * 66}\u2557"
-      puts "\u2551  \u2705 Completion promise detected: <promise>#{@completion_promise}</promise>"
-      puts "\u2551  Task completed in #{@state.iteration} iteration(s)"
-      puts "\u2551  Total time: #{Helpers.format_duration_long(@history.total_duration_ms)}"
-      puts "\u255A#{"=" * 66}\u255D"
-      State.clear_state
-      State.clear_history
-      State.clear_context
-      :break
-    end
-
-    def consume_context(context_at_start)
-      return unless context_at_start
-
-      puts "\u{1F4DD} Context was consumed this iteration"
-      State.clear_context
-    end
-
-    def auto_commit_changes
-      return unless @auto_commit
-
-      status = `git status --porcelain 2>/dev/null`.strip
-      return if status.empty?
-
-      system("git", "add", "-A")
-      system("git", "commit", "-m", "Ralph iteration #{@state.iteration}: work in progress",
-             [:out, :err] => File::NULL)
-      puts "\u{1F4DD} Auto-committed changes"
-    rescue StandardError
-      # git commit failed, ok
-    end
-
-    def handle_iteration_error(error, iteration_start)
-      if @current_pid
-        begin
-          Process.kill("TERM", @current_pid)
-        rescue StandardError
-          # process may have exited
-        end
-        @current_pid = nil
-      end
-
-      $stderr.puts "\n\u274C Error in iteration #{@state.iteration}: #{error}"
-      puts "Continuing to next iteration..."
-
-      iteration_duration = Helpers.now_ms - iteration_start
-      error_record = IterationHistory.new(
-        iteration: @state.iteration,
-        started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
-        ended_at: Time.now.utc.iso8601,
-        duration_ms: iteration_duration,
-        tools_used: {},
-        files_modified: [],
-        exit_code: -1,
-        completion_detected: false,
-        errors: [error.to_s[0, 200]]
-      )
-      @history.iterations << error_record
-      @history.total_duration_ms += iteration_duration
-      State.save_history(@history)
-
-      advance_iteration
-      sleep 2
-    end
-
-    # ---------- Display ----------
-
-    def print_iteration_summary(iteration:, elapsed_ms:, tool_counts:, exit_code:, completion_detected:)
-      tool_summary = Helpers.format_tool_summary(tool_counts)
-      puts "\nIteration Summary"
-      puts "\u2500" * 68
-      puts "Iteration: #{iteration}"
-      puts "Elapsed:   #{Helpers.format_duration(elapsed_ms)}"
-      if tool_summary && !tool_summary.empty?
-        puts "Tools:     #{tool_summary}"
-      else
-        puts "Tools:     none"
-      end
-      puts "Exit code: #{exit_code}"
-      puts "Completion promise: #{completion_detected ? "detected" : "not detected"}"
-    end
   end
 end
