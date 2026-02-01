@@ -15,9 +15,10 @@ module Ralph
   )
 
   class Iteration
-    include Helpers
+    include ::Ralph::Helpers
 
     attr_reader :struggle_indicators
+    attr_reader :snapshot_before, :snapshot_after
 
     def initialize(agent_config:, model:, options:)
       @agent_config = agent_config
@@ -26,44 +27,64 @@ module Ralph
       @struggle_indicators = { "repeated_errors" => {}, "no_progress_iterations" => 0, "short_iterations" => 0 }
     end
 
+    def files_modified
+      Git::FileSnapshot.modified_since(snapshot_before, snapshot_after)
+    end
+
+    def completion_detected
+      check_completion(combined_output, @options[:completion_promise])
+    end
+
+    def result
+    end
+
+    def success?
+      @exit_code == 0
+    end
+
+    def total_counts
+      tool_counts = (
+        if @result.tool_counts.is_a?(Hash)
+          @result.tool_counts
+        else
+          @result.tool_counts.to_h
+        end
+      )
+    end
+
+    def execution
+      @__execution__ ||= (
+        @snapshot_before = Git::FileSnapshot.capture
+        execute_agent(prompt, iteration_start)
+        @snapshot_after = Git::FileSnapshot.capture
+      )
+    end
+
+    def result = execution[0]
+    def exit_code = execution[1]
+    def combined_output
+      "#{result.stdout_text}\n#{result.stderr_text}"
+    end
+
     def call(prompt, iteration_start:)
-      snapshot_before = Git::FileSnapshot.capture
 
-      result, exit_code = execute_agent(prompt, iteration_start)
-      combined_output = "#{result.stdout_text}\n#{result.stderr_text}"
-      iteration_duration = now_ms - iteration_start
-
-      snapshot_after = Git::FileSnapshot.capture
-      files_modified = Git::FileSnapshot.modified_since(snapshot_before, snapshot_after)
-      
-      tool_counts = result.tool_counts.is_a?(Hash) ? result.tool_counts : result.tool_counts.to_h
-      
-      # Extract completion and error information
-      completion_detected = check_completion(combined_output, @options[:completion_promise])
-      errors = extract_errors(combined_output)
-      
-      # Determine overall success
-      success = exit_code == 0
-
-      iteration_result = IterationResult.new(
-        duration_ms: iteration_duration,
+      IterationResult.new(
+        duration_ms: now_ms - iteration_start,
         exit_code: exit_code,
         stdout_text: result.stdout_text,
         stderr_text: result.stderr_text,
         tool_counts: tool_counts,
         files_modified: files_modified,
         completion_detected: completion_detected,
-        errors: errors,
-        success: success
-      )
-
-      update_struggle_indicators(iteration_result)
-      iteration_result
+        errors: extract_errors(combined_output),
+        success: success?
+      ).tap do |iteration_result|
+        update_struggle_indicators(iteration_result)
+      end
+      
     rescue StandardError => e
-      # Return error result if something goes wrong
-      iteration_duration = now_ms - iteration_start
       IterationResult.new(
-        duration_ms: iteration_duration,
+        duration_ms: now_ms - iteration_start,
         exit_code: -1,
         stdout_text: "",
         stderr_text: e.to_s,
@@ -84,55 +105,55 @@ module Ralph
 
     private
 
-    def update_struggle_indicators(result)
-      si = @struggle_indicators
+      def update_struggle_indicators(result)
+        si = @struggle_indicators
 
-      if result.files_modified.empty?
-        si["no_progress_iterations"] += 1
-      else
-        si["no_progress_iterations"] = 0
-      end
+        if result.files_modified.empty?
+          si["no_progress_iterations"] += 1
+        else
+          si["no_progress_iterations"] = 0
+        end
 
-      if result.duration_ms < 30_000
-        si["short_iterations"] += 1
-      else
-        si["short_iterations"] = 0
-      end
+        if result.duration_ms < 30_000
+          si["short_iterations"] += 1
+        else
+          si["short_iterations"] = 0
+        end
 
-      if result.errors.empty?
-        si["repeated_errors"] = {}
-      else
-        result.errors.each do |error|
-          key = error[0, 100]
-          si["repeated_errors"][key] = (si["repeated_errors"][key] || 0) + 1
+        if result.errors.empty?
+          si["repeated_errors"] = {}
+        else
+          result.errors.each do |error|
+            key = error[0, 100]
+            si["repeated_errors"][key] = (si["repeated_errors"][key] || 0) + 1
+          end
         end
       end
-    end
 
-    def execute_agent(prompt, iteration_start)
-      cmd_args = @agent_config.build_args.call(prompt, @model, { allow_all_permissions: @options[:allow_all_permissions] })
-      env = @agent_config.build_env.call(
-        filter_plugins: @options[:disable_plugins],
-        allow_all_permissions: @options[:allow_all_permissions]
-      )
-      cmd = [@agent_config.command] + cmd_args
-
-      if @options[:stream_output]
-        StreamProcessor.stream(
-          cmd: cmd,
-          env: env,
-          compact_tools: !@options[:verbose_tools],
-          tool_summary_interval_ms: 3000,
-          heartbeat_interval_ms: 10000,
-          iteration_start: iteration_start,
-          agent: @agent_config
+      def execute_agent(prompt, iteration_start)
+        cmd_args = @agent_config.build_args.call(prompt, @model, { allow_all_permissions: @options[:allow_all_permissions] })
+        env = @agent_config.build_env.call(
+          filter_plugins: @options[:disable_plugins],
+          allow_all_permissions: @options[:allow_all_permissions]
         )
-      else
-        result, exit_code = StreamProcessor.capture(cmd: cmd, env: env, agent: @agent_config)
-        $stderr.puts result.stderr_text unless result.stderr_text.empty?
-        puts result.stdout_text
-        [result, exit_code]
+        cmd = [@agent_config.command] + cmd_args
+
+        if @options[:stream_output]
+          StreamProcessor.stream(
+            cmd: cmd,
+            env: env,
+            compact_tools: !@options[:verbose_tools],
+            tool_summary_interval_ms: 3000,
+            heartbeat_interval_ms: 10000,
+            iteration_start: iteration_start,
+            agent: @agent_config
+          )
+        else
+          result, exit_code = StreamProcessor.capture(cmd: cmd, env: env, agent: @agent_config)
+          $stderr.puts result.stderr_text unless result.stderr_text.empty?
+          puts result.stdout_text
+          [result, exit_code]
+        end
       end
-    end
   end
 end

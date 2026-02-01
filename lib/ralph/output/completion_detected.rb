@@ -3,7 +3,7 @@
 module Ralph
   module Output
     class CompletionDetected
-      extend Helpers
+      extend ::Ralph::Helpers
 
       def self.call(completion_promise:, iteration:, total_duration_ms:)
         puts "\n╔#{"=" * 66}╗"

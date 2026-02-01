@@ -12,7 +12,7 @@ module Ralph
     keyword_init: true
   )
   module Agents
-    extend Helpers
+    extend ::Ralph::Helpers
 
     module_function
 

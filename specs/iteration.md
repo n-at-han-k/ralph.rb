@@ -79,8 +79,8 @@ IterationResult = Struct.new(
 
 ### 3. Data Extraction
 - Combine stdout/stderr for analysis
-- Detect completion promise using `Helpers.check_completion`
-- Extract errors from combined output using `Helpers.extract_errors`
+- Detect completion promise using `::Ralph::Helpers.check_completion`
+- Extract errors from combined output using `::Ralph::Helpers.extract_errors`
 - Determine overall success status
 
 ### 4. Result Packaging

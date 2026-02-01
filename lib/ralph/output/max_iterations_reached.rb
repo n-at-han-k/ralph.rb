@@ -3,7 +3,7 @@
 module Ralph
   module Output
     class MaxIterationsReached
-      extend Helpers
+      extend ::Ralph::Helpers
 
       def self.call(max_iterations:, total_duration_ms:)
         puts "\n╔#{"=" * 66}╗"

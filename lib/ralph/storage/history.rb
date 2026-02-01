@@ -10,7 +10,7 @@ module Ralph
     # Stores everything as plain hashes. No structs, no ceremony.
     # Each iteration is a hash appended to an array, persisted as JSON.
     class History
-      include Helpers
+      include ::Ralph::Helpers
 
       EMPTY_HISTORY = {
         "iterations" => [],

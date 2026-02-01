@@ -94,7 +94,7 @@ Run the CLI manually to confirm all output renders identically:
 
 ## Ordering
 
-Extract in dependency order — start with simple, self-contained outputs (no formatting helpers needed), then move to those that use `Helpers.format_duration` etc.
+Extract in dependency order — start with simple, self-contained outputs (no formatting helpers needed), then move to those that use `::Ralph::Helpers.format_duration` etc.
 
 Suggested order:
 1. `ContextConsumed` (no args, one line)

@@ -3,7 +3,7 @@
 module Ralph
 
   class Loop
-    include Helpers
+    include ::Ralph::Helpers
 
     def call(config)
       @config = config

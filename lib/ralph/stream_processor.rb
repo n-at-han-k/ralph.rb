@@ -2,7 +2,7 @@
 
 module Ralph
   module StreamProcessor
-    extend Helpers
+    extend ::Ralph::Helpers
 
     module_function
 

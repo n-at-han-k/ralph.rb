@@ -3,7 +3,7 @@
 module Ralph
   module Output
     class Status
-      include Helpers
+      include ::Ralph::Helpers
 
       def self.call(options:)
         new(options).call

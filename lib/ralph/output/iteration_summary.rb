@@ -3,7 +3,7 @@
 module Ralph
   module Output
     class IterationSummary
-      extend Helpers
+      extend ::Ralph::Helpers
 
       def self.call(iteration:, elapsed_ms:, tool_counts:, exit_code:, completion_detected:)
         tool_summary = format_tool_summary(tool_counts)
