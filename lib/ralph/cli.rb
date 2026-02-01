@@ -189,9 +189,7 @@ module Ralph
         abort "Error: --min-iterations (#{@config.min_iterations}) cannot be greater than --max-iterations (#{@config.max_iterations})"
       end
 
-      # Remove prompt_file from options as Loop doesn't accept it
-      loop_options = @options.reject { |key, _| key == :prompt_file }
-      Ralph::Loop.new.call(**loop_options)
+      Ralph::Loop.new.call(**@config.to_h)
 
     rescue OptionParser::ParseError => e
       abort "#{e.message}\nRun 'ralph --help' for available options"

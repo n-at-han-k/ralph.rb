@@ -1,6 +1,6 @@
 module Ralph
   class Config
-    attr_reader(*%i[
+    attr_accessor(*%i[
       prompt
       min_iterations
       max_iterations
@@ -11,14 +11,20 @@ module Ralph
       agent_type
       auto_commit
       disable_plugins
-      allow_all
+      allow_all_permissions
       prompt_source
       stream_output
       verbose_tools
+      prompt_file
+    ])
+
+    attr_reader(*%i[
       current_pid
       stopping
     ])
 
+    # Returns a hash of options suitable for passing to Loop#call.
+    # Excludes prompt_file (CLI-only) and runtime state (current_pid, stopping).
     def to_h
       %i[
         prompt
@@ -31,14 +37,11 @@ module Ralph
         agent_type
         auto_commit
         disable_plugins
-        allow_all
+        allow_all_permissions
         prompt_source
         stream_output
         verbose_tools
-        current_pid
-        stopping
-
-      ].each{ |x| [x, self.send(x)] }.to_h
+      ].map { |x| [x, send(x)] }.to_h
     end
 
     def initialize(
@@ -58,22 +61,23 @@ module Ralph
       verbose_tools: false,
       prompt_source: ""
     )
-      @prompt             = prompt
-      @min_iterations     = min_iterations
-      @max_iterations     = max_iterations
-      @completion_promise = completion_promise
-      @tasks_mode         = tasks_mode
-      @task_promise       = task_promise
-      @model              = model
-      @agent_type         = agent_type
-      @auto_commit        = auto_commit
-      @disable_plugins    = disable_plugins
-      @allow_all          = allow_all_permissions
-      @prompt_source      = prompt_source
-      @stream_output      = stream_output
-      @verbose_tools      = verbose_tools
-      @current_pid        = nil
-      @stopping           = false
+      @prompt                = prompt
+      @min_iterations        = min_iterations
+      @max_iterations        = max_iterations
+      @completion_promise    = completion_promise
+      @tasks_mode            = tasks_mode
+      @task_promise          = task_promise
+      @model                 = model
+      @agent_type            = agent_type
+      @auto_commit           = auto_commit
+      @disable_plugins       = disable_plugins
+      @allow_all_permissions = allow_all_permissions
+      @prompt_file           = prompt_file
+      @prompt_source         = prompt_source
+      @stream_output         = stream_output
+      @verbose_tools         = verbose_tools
+      @current_pid           = nil
+      @stopping              = false
     end
   end
 end
