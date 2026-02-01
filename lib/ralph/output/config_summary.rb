@@ -3,30 +3,29 @@
 module Ralph
   module Output
     class ConfigSummary
-      def self.call(prompt:, prompt_source:, completion_promise:, tasks_mode:, task_promise:, min_iterations:, max_iterations:, agent_name:, model:, disable_plugins:, agent_type:, allow_all:)
-        prompt_preview = prompt.gsub(/\s+/, " ")[0, 80] + (prompt.length > 80 ? "..." : "")
-        if prompt_source && !prompt_source.empty?
-          puts "Task: #{prompt_source}"
+      def self.call(config:, agent_config:, prompt:)
+        prompt_text = prompt.to_s
+        prompt_preview = prompt_text.gsub(/\s+/, ' ')[0, 80] + (prompt_text.length > 80 ? '...' : '')
+        if prompt.source && !prompt.source.empty?
+          puts "Task: #{prompt.source}"
           puts "Preview: #{prompt_preview}"
         else
           puts "Task: #{prompt_preview}"
         end
-        puts "Completion promise: #{completion_promise}"
-        if tasks_mode
-          puts "Tasks mode: ENABLED"
-          puts "Task promise: #{task_promise}"
+        puts "Completion promise: #{config.completion_promise}"
+        if config.tasks_mode
+          puts 'Tasks mode: ENABLED'
+          puts "Task promise: #{config.task_promise}"
         end
-        puts "Min iterations: #{min_iterations}"
-        puts "Max iterations: #{max_iterations > 0 ? max_iterations : "unlimited"}"
-        puts "Agent: #{agent_name}"
-        puts "Model: #{model}" if model && !model.empty?
-        if disable_plugins && agent_type == :opencode
-          puts "OpenCode plugins: non-auth plugins disabled"
-        end
-        puts "Permissions: auto-approve all tools" if allow_all
-        puts ""
-        puts "Starting loop... (Ctrl+C to stop)"
-        puts "═" * 68
+        puts "Min iterations: #{config.min_iterations}"
+        puts "Max iterations: #{config.max_iterations > 0 ? config.max_iterations : 'unlimited'}"
+        puts "Agent: #{agent_config.config_name}"
+        puts "Model: #{config.model}" if config.model && !config.model.empty?
+        puts 'OpenCode plugins: non-auth plugins disabled' if config.disable_plugins && agent_config.type == :opencode
+        puts 'Permissions: auto-approve all tools' if config.allow_all_permissions
+        puts ''
+        puts 'Starting loop... (Ctrl+C to stop)'
+        puts '═' * 68
       end
     end
   end

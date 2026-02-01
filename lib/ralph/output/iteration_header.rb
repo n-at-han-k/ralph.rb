@@ -3,11 +3,11 @@
 module Ralph
   module Output
     class IterationHeader
-      def self.call(iteration:, max_iterations:, min_iterations:)
-        iter_info = max_iterations > 0 ? " / #{max_iterations}" : ""
-        min_info = min_iterations > 1 && iteration < min_iterations ? " (min: #{min_iterations})" : ""
+      def self.call(config:, iteration:)
+        iter_info = config.max_iterations > 0 ? " / #{config.max_iterations}" : ''
+        min_info = config.min_iterations > 1 && iteration < config.min_iterations ? " (min: #{config.min_iterations})" : ''
         puts "\n🔄 Iteration #{iteration}#{iter_info}#{min_info}"
-        puts "─" * 68
+        puts '─' * 68
       end
     end
   end

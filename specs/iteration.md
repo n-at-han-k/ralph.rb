@@ -13,7 +13,6 @@ The `Iteration` class is responsible for executing a single AI agent iteration a
 ```ruby
 require_relative "types"
 require_relative "helpers"
-require_relative "stream_processor"
 require_relative "state"
 ```
 
@@ -67,7 +66,7 @@ IterationResult = Struct.new(
 
 ### 1. Agent Execution
 - Build agent command using `agent_config.build_args` and `agent_config.build_env`
-- Execute agent via `StreamProcessor` (streaming or buffered based on options)
+- Execute agent (streaming or buffered based on options)
 - Capture stdout, stderr, exit code, and tool usage data
 - Handle agent process lifecycle
 
@@ -163,7 +162,7 @@ The `IterationResult` struct can be extended with additional fields as needed.
 ## Testing Strategy
 
 ### Unit Tests
-- Mock `StreamProcessor` to test agent execution logic
+- Mock `Open3` to test agent execution logic
 - Mock `State` methods to test file snapshot logic
 - Test completion detection with various output formats
 - Test error extraction from different types of output

@@ -80,7 +80,7 @@ Subclasses must override all of the following. The base implementations raise `N
 - Strips ANSI escape sequences from the line via `strip_ansi` (from `Ralph::Helpers`)
 - Applies an agent-specific regex to extract a tool name
 - Returns the tool name `String` if matched, `nil` otherwise
-- **Consumers:** `StreamProcessor.stream` (real-time tool counting), `Helpers.collect_tool_summary_from_text` (post-hoc counting)
+- **Consumers:** `Iteration#stream_agent` (real-time tool counting), `Helpers.collect_tool_summary_from_text` (post-hoc counting)
 
 ## Agent Subclasses
 
@@ -143,7 +143,7 @@ Matches Codex's tool output format where tool names follow "Tool:", "Using", "Ca
 | `Loop#resolve_agent!` | `Agents.resolve`, `agent.validate!` | Resolves CLI name to instance, validates binary exists |
 | `Loop#initialize` | `agent.type`, `agent.config_name` | Agent-specific branching (plugin warnings), display name for banner/warnings |
 | `Iteration#execute_agent` | `agent.build_args`, `agent.build_env`, `agent.command` | Constructs and spawns the agent subprocess |
-| `StreamProcessor.stream` | `agent.parse_tool_output` | Real-time tool counting during streaming output |
+| `Iteration#stream_agent` | `agent.parse_tool_output` | Real-time tool counting during streaming output |
 | `Helpers.collect_tool_summary_from_text` | `agent.parse_tool_output` | Post-hoc tool counting from buffered output |
 | `Output::Status` | `Agents.resolve`, `agent.config_name` | Display name in `--status` dashboard |
 | `CLI` | `Agents.valid_agent_names` | OptionParser validation and help text for `--agent` flag |

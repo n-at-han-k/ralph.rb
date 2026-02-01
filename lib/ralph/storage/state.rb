@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "json"
-require "fileutils"
+require 'json'
+require 'fileutils'
 
 module Ralph
   module Storage
@@ -56,29 +56,46 @@ module Ralph
       end
 
       class << self
+        def from_config(config, prompt:)
+          new(
+            active: true,
+            iteration: 1,
+            min_iterations: config.min_iterations,
+            max_iterations: config.max_iterations,
+            completion_promise: config.completion_promise,
+            tasks_mode: config.tasks_mode,
+            task_promise: config.task_promise,
+            prompt: prompt.to_s,
+            started_at: Time.now.utc.iso8601,
+            model: config.model,
+            agent: config.agent_type
+          )
+        end
+
         def dir
-          File.join(Dir.pwd, ".ralph")
+          File.join(Dir.pwd, '.ralph')
         end
 
         def path
-          File.join(dir, "ralph-loop.state.json")
+          File.join(dir, 'ralph-loop.state.json')
         end
 
         def load
           return nil unless File.exist?(path)
+
           data = JSON.parse(File.read(path))
           new(
-            active: data["active"],
-            iteration: data["iteration"],
-            min_iterations: data["minIterations"],
-            max_iterations: data["maxIterations"],
-            completion_promise: data["completionPromise"],
-            tasks_mode: data["tasksMode"],
-            task_promise: data["taskPromise"],
-            prompt: data["prompt"],
-            started_at: data["startedAt"],
-            model: data["model"],
-            agent: data["agent"]
+            active: data['active'],
+            iteration: data['iteration'],
+            min_iterations: data['minIterations'],
+            max_iterations: data['maxIterations'],
+            completion_promise: data['completionPromise'],
+            tasks_mode: data['tasksMode'],
+            task_promise: data['taskPromise'],
+            prompt: data['prompt'],
+            started_at: data['startedAt'],
+            model: data['model'],
+            agent: data['agent']
           )
         rescue StandardError
           nil
