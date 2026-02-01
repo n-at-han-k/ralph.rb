@@ -10,6 +10,8 @@ module Ralph
     # Stores everything as plain hashes. No structs, no ceremony.
     # Each iteration is a hash appended to an array, persisted as JSON.
     class History
+      include Helpers
+
       EMPTY_HISTORY = {
         "iterations" => [],
         "total_duration_ms" => 0,
@@ -46,7 +48,7 @@ module Ralph
 
       # Record an iteration that raised an exception before producing a result.
       def record_error(state_iteration:, iteration_start:, error:)
-        iteration_duration = Helpers.now_ms - iteration_start
+        iteration_duration = now_ms - iteration_start
 
         entry = {
           "iteration" => state_iteration,

@@ -15,6 +15,8 @@ module Ralph
   )
 
   class Iteration
+    include Helpers
+
     attr_reader :struggle_indicators
 
     def initialize(agent_config:, model:, options:)
@@ -29,7 +31,7 @@ module Ralph
 
       result, exit_code = execute_agent(prompt, iteration_start)
       combined_output = "#{result.stdout_text}\n#{result.stderr_text}"
-      iteration_duration = Helpers.now_ms - iteration_start
+      iteration_duration = now_ms - iteration_start
 
       snapshot_after = Git::FileSnapshot.capture
       files_modified = Git::FileSnapshot.modified_since(snapshot_before, snapshot_after)
@@ -37,8 +39,8 @@ module Ralph
       tool_counts = result.tool_counts.is_a?(Hash) ? result.tool_counts : result.tool_counts.to_h
       
       # Extract completion and error information
-      completion_detected = Helpers.check_completion(combined_output, @options[:completion_promise])
-      errors = Helpers.extract_errors(combined_output)
+      completion_detected = check_completion(combined_output, @options[:completion_promise])
+      errors = extract_errors(combined_output)
       
       # Determine overall success
       success = exit_code == 0
@@ -59,7 +61,7 @@ module Ralph
       iteration_result
     rescue StandardError => e
       # Return error result if something goes wrong
-      iteration_duration = Helpers.now_ms - iteration_start
+      iteration_duration = now_ms - iteration_start
       IterationResult.new(
         duration_ms: iteration_duration,
         exit_code: -1,

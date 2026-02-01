@@ -3,6 +3,8 @@
 module Ralph
   module Output
     class Status
+      include Helpers
+
       def self.call(options:)
         new(options).call
       end
@@ -45,8 +47,8 @@ module Ralph
         end
 
         def print_active_loop(state)
-          elapsed = Helpers.now_ms - (Time.parse(state.started_at).to_f * 1000).to_i
-          elapsed_str = Helpers.format_duration_long(elapsed)
+          elapsed = now_ms - (Time.parse(state.started_at).to_f * 1000).to_i
+          elapsed_str = format_duration_long(elapsed)
           puts "🔄 ACTIVE LOOP"
           max_str = state.max_iterations > 0 ? " / #{state.max_iterations}" : " (unlimited)"
           puts "   Iteration:    #{state.iteration}#{max_str}"
@@ -114,7 +116,7 @@ module Ralph
           return unless iterations.any?
 
           puts "\n📊 HISTORY (#{iterations.length} iterations)"
-          puts "   Total time:   #{Helpers.format_duration_long(history["total_duration_ms"] || 0)}"
+          puts "   Total time:   #{format_duration_long(history["total_duration_ms"] || 0)}"
 
           recent = iterations.last(5)
           print_recent_iterations(recent)
@@ -141,7 +143,7 @@ module Ralph
             else
               "🔄"
             end
-            puts "   #{status_icon} ##{iter["iteration"]}: #{Helpers.format_duration_long(iter["duration_ms"])} | #{tools.empty? ? "no tools" : tools}"
+            puts "   #{status_icon} ##{iter["iteration"]}: #{format_duration_long(iter["duration_ms"])} | #{tools.empty? ? "no tools" : tools}"
           end
         end
 

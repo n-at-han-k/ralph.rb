@@ -12,6 +12,8 @@ module Ralph
     keyword_init: true
   )
   module Agents
+    extend Helpers
+
     module_function
 
     def all
@@ -29,7 +31,7 @@ module Ralph
           },
           build_env: lambda { |_options| ENV.to_h.dup },
           parse_tool_output: lambda { |line|
-            match = Helpers.strip_ansi(line).match(/^\|\s{2}([A-Za-z0-9_-]+)/)
+            match = strip_ansi(line).match(/^\|\s{2}([A-Za-z0-9_-]+)/)
             match ? match[1] : nil
           },
           config_name: "OpenCode"
@@ -50,7 +52,7 @@ module Ralph
           },
           build_env: lambda { |_options| ENV.to_h.dup },
           parse_tool_output: lambda { |line|
-            match = Helpers.strip_ansi(line).match(/(?:Using|Called|Tool:)\s+([A-Za-z0-9_-]+)/i)
+            match = strip_ansi(line).match(/(?:Using|Called|Tool:)\s+([A-Za-z0-9_-]+)/i)
             match ? match[1] : nil
           },
           config_name: "Claude Code"
@@ -72,7 +74,7 @@ module Ralph
           },
           build_env: lambda { |_options| ENV.to_h.dup },
           parse_tool_output: lambda { |line|
-            match = Helpers.strip_ansi(line).match(/(?:Tool:|Using|Calling|Running)\s+([A-Za-z0-9_-]+)/i)
+            match = strip_ansi(line).match(/(?:Tool:|Using|Calling|Running)\s+([A-Za-z0-9_-]+)/i)
             match ? match[1] : nil
           },
           config_name: "Codex"
@@ -98,7 +100,7 @@ module Ralph
     end
 
     def validate!(agent_config)
-      path = Helpers.which(agent_config.command)
+      path = which(agent_config.command)
       unless path
         $stderr.puts "Error: #{agent_config.config_name} CLI ('#{agent_config.command}') not found."
         exit 1

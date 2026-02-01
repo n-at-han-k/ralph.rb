@@ -3,6 +3,8 @@
 module Ralph
 
   class Loop
+    include Helpers
+
     def call(config)
       @config = config
 
@@ -156,7 +158,7 @@ module Ralph
 
       def run_iteration
         context_at_start = Storage::Context.new
-        iteration_start  = Helpers.now_ms
+        iteration_start  = now_ms
 
         # Build prompt for this iteration
         full_prompt = @prompt.build_iteration(@state, @agent_config)
@@ -165,7 +167,7 @@ module Ralph
         result = @iteration.call(full_prompt, iteration_start: iteration_start)
 
         # Check for task completion if in tasks mode
-        task_completion_detected = @config.tasks_mode ? Helpers.check_completion("#{result.stdout_text}\n#{result.stderr_text}", @config.task_promise) : false
+        task_completion_detected = @config.tasks_mode ? check_completion("#{result.stdout_text}\n#{result.stderr_text}", @config.task_promise) : false
 
         print_iteration_summary(
           iteration: @state.iteration,
@@ -215,7 +217,7 @@ module Ralph
       # ---------- Completion & error handling ----------
 
       def detect_plugin_error!(combined_output)
-        if @agent_config.type == :opencode && Helpers.detect_placeholder_plugin_error(combined_output)
+        if @agent_config.type == :opencode && detect_placeholder_plugin_error(combined_output)
           Output::PluginError.call
           Storage::State.clear
           exit 1

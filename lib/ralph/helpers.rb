@@ -2,8 +2,6 @@
 
 module Ralph
   module Helpers
-    module_function
-
     def strip_ansi(input)
       input.gsub(/\x1B\[[0-9;]*m/, "")
     end

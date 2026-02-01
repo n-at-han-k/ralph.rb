@@ -2,6 +2,8 @@
 
 module Ralph
   module StreamProcessor
+    extend Helpers
+
     module_function
 
     # Result of streaming a process
@@ -23,25 +25,25 @@ module Ralph
       stdout_text = +""
       stderr_text = +""
       mutex = Mutex.new
-      last_printed_at = Helpers.now_ms
-      last_activity_at = Helpers.now_ms
+      last_printed_at = now_ms
+      last_activity_at = now_ms
       last_tool_summary_at = 0
 
       maybe_print_tool_summary = lambda { |force|
         return unless compact_tools
         return if tool_counts.empty?
-        now = Helpers.now_ms
+        now = now_ms
         return if !force && (now - last_tool_summary_at < tool_summary_interval_ms)
-        summary = Helpers.format_tool_summary(tool_counts)
+        summary = format_tool_summary(tool_counts)
         unless summary.empty?
           puts "| Tools    #{summary}"
-          last_printed_at = Helpers.now_ms
-          last_tool_summary_at = Helpers.now_ms
+          last_printed_at = now_ms
+          last_tool_summary_at = now_ms
         end
       }
 
       line = lambda { |line, is_error|
-        mutex.synchronize { last_activity_at = Helpers.now_ms }
+        mutex.synchronize { last_activity_at = now_ms }
         tool = agent.parse_tool_output.call(line)
         if tool
           mutex.synchronize { tool_counts[tool] += 1 }
@@ -53,7 +55,7 @@ module Ralph
 
         if line.empty?
           puts ""
-          mutex.synchronize { last_printed_at = Helpers.now_ms }
+          mutex.synchronize { last_printed_at = now_ms }
           next
         end
 
@@ -62,7 +64,7 @@ module Ralph
         else
           puts line
         end
-        mutex.synchronize { last_printed_at = Helpers.now_ms }
+        mutex.synchronize { last_printed_at = now_ms }
       }
 
       stdin, stdout, stderr, wait_thr = Open3.popen3(env, *cmd)
@@ -72,14 +74,14 @@ module Ralph
       heartbeat_thread = Thread.new do
         loop do
           sleep(heartbeat_interval_ms / 1000.0)
-          now = Helpers.now_ms
+          now = now_ms
           lp = mutex.synchronize { last_printed_at }
           if now - lp >= heartbeat_interval_ms
-            elapsed = Helpers.format_duration(now - iteration_start)
+            elapsed = format_duration(now - iteration_start)
             la = mutex.synchronize { last_activity_at }
-            since_activity = Helpers.format_duration(now - la)
+            since_activity = format_duration(now - la)
             puts "⏳ working... elapsed #{elapsed} · last activity #{since_activity} ago"
-            mutex.synchronize { last_printed_at = Helpers.now_ms }
+            mutex.synchronize { last_printed_at = now_ms }
           end
         end
       rescue StandardError
@@ -137,7 +139,7 @@ module Ralph
     # Non-streaming: run process and capture output
     def capture(cmd:, env:, agent:)
       stdout, stderr, status = Open3.capture3(env, *cmd, stdin_data: "")
-      tool_counts = Helpers.collect_tool_summary_from_text("#{stdout}\n#{stderr}", agent)
+      tool_counts = collect_tool_summary_from_text("#{stdout}\n#{stderr}", agent)
       result = StreamResult.new(
         stdout_text: stdout,
         stderr_text: stderr,

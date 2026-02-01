@@ -3,12 +3,14 @@
 module Ralph
   module Output
     class IterationSummary
+      extend Helpers
+
       def self.call(iteration:, elapsed_ms:, tool_counts:, exit_code:, completion_detected:)
-        tool_summary = Helpers.format_tool_summary(tool_counts)
+        tool_summary = format_tool_summary(tool_counts)
         puts "\nIteration Summary"
         puts "─" * 68
         puts "Iteration: #{iteration}"
-        puts "Elapsed:   #{Helpers.format_duration(elapsed_ms)}"
+        puts "Elapsed:   #{format_duration(elapsed_ms)}"
         if tool_summary && !tool_summary.empty?
           puts "Tools:     #{tool_summary}"
         else
