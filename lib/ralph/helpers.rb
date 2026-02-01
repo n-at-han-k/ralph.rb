@@ -53,7 +53,7 @@ module Ralph
     def collect_tool_summary_from_text(text, agent)
       counts = Hash.new(0)
       text.each_line do |line|
-        tool = agent.parse_tool_output.call(line)
+        tool = agent.parse_tool_output(line)
         counts[tool] += 1 if tool
       end
       counts

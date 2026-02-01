@@ -131,8 +131,8 @@ module Ralph
       end
 
       def execute_agent(prompt, iteration_start)
-        cmd_args = @agent_config.build_args.call(prompt, @model, { allow_all_permissions: @options[:allow_all_permissions] })
-        env = @agent_config.build_env.call(
+        cmd_args = @agent_config.build_args(prompt, @model, { allow_all_permissions: @options[:allow_all_permissions] })
+        env = @agent_config.build_env(
           filter_plugins: @options[:disable_plugins],
           allow_all_permissions: @options[:allow_all_permissions]
         )

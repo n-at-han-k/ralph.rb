@@ -90,7 +90,7 @@ module Ralph
 
       def resolve_agent!(agent_type)
         Agents.resolve(agent_type).tap do |agent_config|
-          Agents.validate!(agent_config)
+          agent_config.validate!
         end
       end
 

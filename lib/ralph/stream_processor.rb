@@ -44,7 +44,7 @@ module Ralph
 
       line = lambda { |line, is_error|
         mutex.synchronize { last_activity_at = now_ms }
-        tool = agent.parse_tool_output.call(line)
+        tool = agent.parse_tool_output(line)
         if tool
           mutex.synchronize { tool_counts[tool] += 1 }
           if compact_tools

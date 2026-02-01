@@ -26,7 +26,7 @@ def initialize(agent_config:, model:, options:)
 ```
 
 **Parameters:**
-- `agent_config` - `AgentConfig` struct containing agent command, build_args, build_env, etc.
+- `agent_config` - `Ralph::Agents::Base` instance providing command, build_args, build_env, etc. (see [agents.md](./agents.md))
 - `model` - String representing the model identifier to pass to the agent
 - `options` - Hash containing execution options:
   - `allow_all_permissions` - Boolean for auto-approving tool permissions
