@@ -2,24 +2,8 @@
 
 module Ralph
   class CLI
-    def initialize
-      @options = {
-        prompt: "",
-        min_iterations: 1,
-        max_iterations: 0,
-        completion_promise: "COMPLETE",
-        tasks_mode: false,
-        task_promise: "READY_FOR_NEXT_TASK",
-        model: "",
-        agent_type: "opencode",
-        auto_commit: true,
-        disable_plugins: false,
-        allow_all_permissions: true,
-        prompt_file: "",
-        stream_output: true,
-        verbose_tools: false,
-        prompt_source: ""
-      }
+    def initialize(**options)
+      @config = Config.new(**options)
     end
 
     def run(argv = ARGV)
@@ -47,55 +31,55 @@ module Ralph
         BANNER
 
         o.on("--agent AGENT", Agents.valid_agent_names, "AI agent: #{Agents.valid_agent_names.join(', ')} (default: opencode)") do |v|
-          @options[:agent_type] = v
+          @config.agent_type = v
         end
 
         o.on("--min-iterations N", Integer, "Minimum iterations before completion (default: 1)") do |v|
-          @options[:min_iterations] = v
+          @config.min_iterations = v
         end
 
         o.on("--max-iterations N", Integer, "Maximum iterations before stopping (default: unlimited)") do |v|
-          @options[:max_iterations] = v
+          @config.max_iterations = v
         end
 
         o.on("--completion-promise TEXT", "Phrase that signals completion (default: COMPLETE)") do |v|
-          @options[:completion_promise] = v
+          @config.completion_promise = v
         end
 
         o.on("-t", "--tasks", "Enable Tasks Mode for structured task tracking") do
-          @options[:tasks_mode] = true
+          @config.tasks_mode = true
         end
 
         o.on("--task-promise TEXT", "Phrase that signals task completion (default: READY_FOR_NEXT_TASK)") do |v|
-          @options[:task_promise] = v
+          @config.task_promise = v
         end
 
         o.on("--model MODEL", "Model to use (agent-specific)") do |v|
-          @options[:model] = v
+          @config.model = v
         end
 
         o.on("-f", "--prompt-file PATH", "--file PATH", "Read prompt content from a file") do |v|
-          @options[:prompt_file] = v
+          @config.prompt_file = v
         end
 
         o.on("--[no-]stream", "Stream agent output in real-time (default: on)") do |v|
-          @options[:stream_output] = v
+          @config.stream_output = v
         end
 
         o.on("--verbose-tools", "Print every tool line (disable compact summary)") do
-          @options[:verbose_tools] = true
+          @config.verbose_tools = true
         end
 
         o.on("--no-plugins", "Disable non-auth OpenCode plugins (opencode only)") do
-          @options[:disable_plugins] = true
+          @config.disable_plugins = true
         end
 
         o.on("--[no-]commit", "Auto-commit after each iteration (default: on)") do |v|
-          @options[:auto_commit] = v
+          @config.auto_commit = v
         end
 
         o.on("--[no-]allow-all", "Auto-approve all tool permissions (default: on)") do |v|
-          @options[:allow_all_permissions] = v
+          @config.allow_all_permissions = v
         end
 
         # Subcommands -- these set a command to dispatch after parsing
@@ -157,7 +141,7 @@ module Ralph
 
       parser.parse(argv.dup).then do |prompt_parts|
         begin
-          Prompt.from_parts(prompt_parts, prompt_file: @options[:prompt_file]).then do |prompt|
+          Prompt.from_parts(prompt_parts, prompt_file: @config.prompt_file).then do |prompt|
             if prompt.empty?
               abort "
                 Error: No prompt provided
@@ -166,8 +150,8 @@ module Ralph
               "
             end
 
-            @options[:prompt] = prompt.to_s
-            @options[:prompt_source] = prompt.source
+            @config.prompt = prompt.to_s
+            @config.prompt_source = prompt.source
           end
         rescue Prompt::Error => e
           abort e.message
@@ -181,7 +165,8 @@ module Ralph
         puts "ralph #{VERSION}"
         exit 0
       when :status
-        show_status(@options)
+        Output::Status.call(options: @config.to_h)
+
         exit 0
       when :add_context
         add_context(command_arg)
@@ -200,9 +185,8 @@ module Ralph
         exit 0
       end
 
-      # Validate
-      if @options[:max_iterations] > 0 && @options[:min_iterations] > @options[:max_iterations]
-        abort "Error: --min-iterations (#{@options[:min_iterations]}) cannot be greater than --max-iterations (#{@options[:max_iterations]})"
+      if @config.max_iterations > 0 && @config.min_iterations > @config.max_iterations
+        abort "Error: --min-iterations (#{@config.min_iterations}) cannot be greater than --max-iterations (#{@config.max_iterations})"
       end
 
       # Remove prompt_file from options as Loop doesn't accept it
@@ -220,10 +204,6 @@ module Ralph
     end
 
     private
-
-      def show_status(options = @options)
-        Output::Status.call(options: options)
-      end
 
       def add_context(context_text)
         timestamp = Time.now.utc.iso8601

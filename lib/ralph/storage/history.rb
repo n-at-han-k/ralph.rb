@@ -47,10 +47,63 @@ module Ralph
   end
 
   module Storage
-    # Manages iteration history and performance tracking
+    # Manages iteration history and performance tracking.
+    #
+    # Class methods handle raw persistence (save/load/clear).
+    # Instance methods provide a higher-level recording API that Loop uses.
     class History
+      # --- Instance API (used by Loop) ---
+
+      attr_reader :history
+
+      def initialize
+        @history = RalphHistory.empty
+        self.class.save_history(@history)
+      end
+
+      # Record a completed iteration (success or failure from the agent).
+      def record(state_iteration:, iteration_start:, result:, struggle_indicators:)
+        iter_record = IterationHistory.new(
+          iteration: state_iteration,
+          started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
+          ended_at: Time.now.utc.iso8601,
+          duration_ms: result.duration_ms,
+          tools_used: result.tool_counts,
+          files_modified: result.files_modified,
+          exit_code: result.exit_code,
+          completion_detected: result.completion_detected,
+          errors: result.errors
+        )
+
+        append(iter_record, result.duration_ms, struggle_indicators)
+      end
+
+      # Record an iteration that raised an exception before producing a result.
+      def record_error(state_iteration:, iteration_start:, error:)
+        iteration_duration = Helpers.now_ms - iteration_start
+
+        error_record = IterationHistory.new(
+          iteration: state_iteration,
+          started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
+          ended_at: Time.now.utc.iso8601,
+          duration_ms: iteration_duration,
+          tools_used: {},
+          files_modified: [],
+          exit_code: -1,
+          completion_detected: false,
+          errors: [error.to_s[0, 200]]
+        )
+
+        append(error_record, iteration_duration, nil)
+      end
+
+      def total_duration_ms
+        @history.total_duration_ms
+      end
+
+      # --- Class API (raw persistence) ---
+
       class << self
-        # --- File Paths ---
         def state_dir
           File.join(Dir.pwd, ".ralph")
         end
@@ -59,7 +112,6 @@ module Ralph
           File.join(state_dir, "ralph-history.json")
         end
 
-        # --- History Management ---
         def save_history(history)
           FileUtils.mkdir_p(state_dir)
           data = {
@@ -121,6 +173,15 @@ module Ralph
         rescue StandardError
           # ignore
         end
+      end
+
+      private
+
+      def append(record, duration_ms, struggle_indicators)
+        @history.iterations << record
+        @history.total_duration_ms += duration_ms
+        @history.struggle_indicators = struggle_indicators if struggle_indicators
+        self.class.save_history(@history)
       end
     end
   end

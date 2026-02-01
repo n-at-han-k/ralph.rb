@@ -90,7 +90,7 @@ module Ralph
             Output::TasksFileCreated.call(path: Storage::Tasks.tasks_path)
           end
 
-          @history = RalphHistory.empty.tap { Storage::History.save_history _1 }
+          @history = Storage::History.new
 
           Output::ConfigSummary.call(
             prompt: @prompt,
@@ -163,11 +163,17 @@ module Ralph
       end
 
       def max_iterations_reached?
-        return false unless @max_iterations > 0 && @state.iteration > @max_iterations
+        if @max_iterations > 0 && @state.iteration > @max_iterations
+          Output::MaxIterationsReached.call(
+            max_iterations: @max_iterations,
+            total_duration_ms: @history.total_duration_ms
+          )
 
-        Output::MaxIterationsReached.call(max_iterations: @max_iterations, total_duration_ms: @history.total_duration_ms)
-        Storage::State.clear_state
-        true
+          Storage::State.clear_state
+          true
+        else
+          false
+        end
       end
 
       def advance_iteration
@@ -198,7 +204,12 @@ module Ralph
           completion_detected: result.completion_detected
         )
 
-        record_iteration(iteration_start, result)
+        @history.record(
+          state_iteration: @state.iteration,
+          iteration_start: iteration_start,
+          result: result,
+          struggle_indicators: @iteration.struggle_indicators
+        )
 
         warn_if_struggling
         detect_plugin_error!("#{result.stdout_text}\n#{result.stderr_text}")
@@ -218,70 +229,26 @@ module Ralph
         :continue
       end
 
-      # ---------- History & struggle tracking ----------
-
-      def record_iteration(iteration_start, result)
-        iter_record = IterationHistory.new(
-          iteration: @state.iteration,
-          started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
-          ended_at: Time.now.utc.iso8601,
-          duration_ms: result.duration_ms,
-          tools_used: result.tool_counts,
-          files_modified: result.files_modified,
-          exit_code: result.exit_code,
-          completion_detected: result.completion_detected,
-          errors: result.errors
-        )
-
-        @history.iterations << iter_record
-        @history.total_duration_ms += result.duration_ms
-        update_struggle_indicators(result.files_modified, result.duration_ms, result.errors)
-        Storage::History.save_history(@history)
-      end
-
-      def update_struggle_indicators(files_modified, iteration_duration, errors)
-        si = @history.struggle_indicators
-
-        if files_modified.empty?
-          si.no_progress_iterations += 1
-        else
-          si.no_progress_iterations = 0
-        end
-
-        if iteration_duration < 30_000
-          si.short_iterations += 1
-        else
-          si.short_iterations = 0
-        end
-
-        if errors.empty?
-          si.repeated_errors = {}
-        else
-          errors.each do |error|
-            key = error[0, 100]
-            si.repeated_errors[key] = (si.repeated_errors[key] || 0) + 1
-          end
-        end
-      end
+      # ---------- Struggle tracking ----------
 
       def warn_if_struggling
-        si = @history.struggle_indicators
-        return unless @state.iteration > 2 && (si.no_progress_iterations >= 3 || si.short_iterations >= 3)
-
-        Output::StruggleWarning.call(
-          no_progress_iterations: si.no_progress_iterations,
-          short_iterations: si.short_iterations
-        )
+        if @state.iteration > 2 && @iteration.struggling?
+          si = @iteration.struggle_indicators
+          Output::StruggleWarning.call(
+            no_progress_iterations: si.no_progress_iterations,
+            short_iterations: si.short_iterations
+          )
+        end
       end
 
       # ---------- Completion & error handling ----------
 
       def detect_plugin_error!(combined_output)
-        return unless @agent_config.type == :opencode && Helpers.detect_placeholder_plugin_error(combined_output)
-
-        Output::PluginError.call
-        Storage::State.clear_state
-        exit 1
+        if @agent_config.type == :opencode && Helpers.detect_placeholder_plugin_error(combined_output)
+          Output::PluginError.call
+          Storage::State.clear_state
+          exit 1
+        end
       end
 
       def warn_nonzero_exit(exit_code)
@@ -346,21 +313,11 @@ module Ralph
 
         Output::IterationError.call(iteration: @state.iteration, error: error)
 
-        iteration_duration = Helpers.now_ms - iteration_start
-        error_record = IterationHistory.new(
-          iteration: @state.iteration,
-          started_at: Time.at(iteration_start / 1000.0).utc.iso8601,
-          ended_at: Time.now.utc.iso8601,
-          duration_ms: iteration_duration,
-          tools_used: {},
-          files_modified: [],
-          exit_code: -1,
-          completion_detected: false,
-          errors: [error.to_s[0, 200]]
+        @history.record_error(
+          state_iteration: @state.iteration,
+          iteration_start: iteration_start,
+          error: error
         )
-        @history.iterations << error_record
-        @history.total_duration_ms += iteration_duration
-        Storage::History.save_history(@history)
 
         advance_iteration
         sleep 2

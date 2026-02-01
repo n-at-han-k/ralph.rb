@@ -15,10 +15,13 @@ module Ralph
   )
 
   class Iteration
+    attr_reader :struggle_indicators
+
     def initialize(agent_config:, model:, options:)
       @agent_config = agent_config
       @model = model
       @options = options
+      @struggle_indicators = StruggleIndicators.empty
     end
 
     def call(prompt, iteration_start:)
@@ -40,7 +43,7 @@ module Ralph
       # Determine overall success
       success = exit_code == 0
 
-      IterationResult.new(
+      iteration_result = IterationResult.new(
         duration_ms: iteration_duration,
         exit_code: exit_code,
         stdout_text: result.stdout_text,
@@ -51,6 +54,9 @@ module Ralph
         errors: errors,
         success: success
       )
+
+      update_struggle_indicators(iteration_result)
+      iteration_result
     rescue StandardError => e
       # Return error result if something goes wrong
       iteration_duration = Helpers.now_ms - iteration_start
@@ -67,7 +73,39 @@ module Ralph
       )
     end
 
+    # Returns true when the agent appears to be stuck.
+    # Should only be called after iteration > 2 for meaningful results.
+    def struggling?
+      @struggle_indicators.no_progress_iterations >= 3 ||
+        @struggle_indicators.short_iterations >= 3
+    end
+
     private
+
+    def update_struggle_indicators(result)
+      si = @struggle_indicators
+
+      if result.files_modified.empty?
+        si.no_progress_iterations += 1
+      else
+        si.no_progress_iterations = 0
+      end
+
+      if result.duration_ms < 30_000
+        si.short_iterations += 1
+      else
+        si.short_iterations = 0
+      end
+
+      if result.errors.empty?
+        si.repeated_errors = {}
+      else
+        result.errors.each do |error|
+          key = error[0, 100]
+          si.repeated_errors[key] = (si.repeated_errors[key] || 0) + 1
+        end
+      end
+    end
 
     def execute_agent(prompt, iteration_start)
       cmd_args = @agent_config.build_args.call(prompt, @model, { allow_all_permissions: @options[:allow_all_permissions] })
