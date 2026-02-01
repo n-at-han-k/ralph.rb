@@ -27,16 +27,7 @@ module Ralph
             cmd_args.push(prompt_text)
             cmd_args
           },
-          build_env: lambda { |options|
-            env = ENV.to_h.dup
-            if options[:filter_plugins] || options[:allow_all_permissions]
-              env["OPENCODE_CONFIG"] = Storage::State.ensure_ralph_config(
-                filter_plugins: options[:filter_plugins],
-                allow_all_permissions: options[:allow_all_permissions]
-              )
-            end
-            env
-          },
+          build_env: lambda { |_options| ENV.to_h.dup },
           parse_tool_output: lambda { |line|
             match = Helpers.strip_ansi(line).match(/^\|\s{2}([A-Za-z0-9_-]+)/)
             match ? match[1] : nil

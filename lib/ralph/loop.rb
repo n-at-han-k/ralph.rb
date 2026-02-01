@@ -6,9 +6,9 @@ module Ralph
     def call(config)
       @config = config
 
-      Storage::State.load_state.then do |existing_state|
+      Storage::State.load.then do |existing_state|
         if existing_state&.active
-          Output::ActiveLoopError.call(iteration: existing_state.iteration, started_at: existing_state.started_at, state_path: Storage::State.state_path)
+          Output::ActiveLoopError.call(iteration: existing_state.iteration, started_at: existing_state.started_at, state_path: Storage::State.path)
           exit 1
         else
           @agent_config = resolve_agent!(@config.agent_type)
@@ -38,7 +38,8 @@ module Ralph
 
           Output::Banner.call(agent_name: @agent_config.config_name)
 
-          @state = RalphState.new( active: true,
+          @state = Storage::State.new(
+            active: true,
             iteration: 1,
             min_iterations: @config.min_iterations,
             max_iterations: @config.max_iterations,
@@ -49,12 +50,11 @@ module Ralph
             started_at: Time.now.utc.iso8601,
             model: @config.model,
             agent: @config.agent_type
-
-          ).tap { Storage::State.save_state _1 }
+          ).tap(&:save)
 
 
           if @config.tasks_mode && !File.exist?(Storage::Tasks.tasks_path)
-            FileUtils.mkdir_p(Storage::State.state_dir)
+            FileUtils.mkdir_p(Storage::State.dir)
             File.write(Storage::Tasks.tasks_path, "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n")
             Output::TasksFileCreated.call(path: Storage::Tasks.tasks_path)
           end
@@ -105,7 +105,7 @@ module Ralph
               # process may have exited
             end
           end
-          Storage::State.clear_state
+          Storage::State.clear
           $stderr.puts "Loop cancelled."
           exit 0
         end
@@ -138,7 +138,7 @@ module Ralph
             total_duration_ms: @history.total_duration_ms
           )
 
-          Storage::State.clear_state
+          Storage::State.clear
           true
         else
           false
@@ -147,7 +147,7 @@ module Ralph
 
       def advance_iteration
         @state.iteration += 1
-        Storage::State.save_state(@state)
+        @state.save
       end
 
       # ---------- Single iteration ----------
@@ -215,7 +215,7 @@ module Ralph
       def detect_plugin_error!(combined_output)
         if @agent_config.type == :opencode && Helpers.detect_placeholder_plugin_error(combined_output)
           Output::PluginError.call
-          Storage::State.clear_state
+          Storage::State.clear
           exit 1
         end
       end
@@ -245,7 +245,7 @@ module Ralph
           iteration: @state.iteration,
           total_duration_ms: @history.total_duration_ms
         )
-        Storage::State.clear_state
+        Storage::State.clear
         Storage::History.clear_history
         Storage::Context.clear_context
         :break

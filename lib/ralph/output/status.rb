@@ -12,7 +12,7 @@ module Ralph
       end
 
       def call
-        state = Storage::State.load_state
+        state = Storage::State.load
         history = Storage::History.load_history
         context = Storage::Context.load_context
         show_tasks = @options[:tasks_mode] || state&.tasks_mode
