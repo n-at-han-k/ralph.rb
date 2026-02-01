@@ -54,14 +54,14 @@ class TestCLIIntegration < Minitest::Test
   def test_inline_prompt_single_arg
     Ralph::CLI.new.run(["Build a REST API"])
     assert_equal 1, @loop_calls.length
-    assert_equal "Build a REST API", @loop_calls.first.prompt
-    assert_equal "", @loop_calls.first.prompt_source
+    assert_equal "Build a REST API", @loop_calls.first.prompt.to_s
+    assert_equal "", @loop_calls.first.prompt.source
   end
 
   def test_inline_prompt_multiple_args
     Ralph::CLI.new.run(["Build", "a", "REST", "API"])
     assert_equal 1, @loop_calls.length
-    assert_equal "Build a REST API", @loop_calls.first.prompt
+    assert_equal "Build a REST API", @loop_calls.first.prompt.to_s
   end
 
   # --- Prompt resolution (explicit file) ---
@@ -69,8 +69,8 @@ class TestCLIIntegration < Minitest::Test
   def test_explicit_prompt_file
     f = create_temp_file("Content from file")
     Ralph::CLI.new.run(["--prompt-file", f.path])
-    assert_equal "Content from file", @loop_calls.first.prompt
-    assert_equal f.path, @loop_calls.first.prompt_source
+    assert_equal "Content from file", @loop_calls.first.prompt.to_s
+    assert_equal f.path, @loop_calls.first.prompt.source
   ensure
     f&.close
     f&.unlink
@@ -81,8 +81,8 @@ class TestCLIIntegration < Minitest::Test
   def test_implicit_prompt_file
     f = create_temp_file("Implicit file content")
     Ralph::CLI.new.run([f.path])
-    assert_equal "Implicit file content", @loop_calls.first.prompt
-    assert_equal f.path, @loop_calls.first.prompt_source
+    assert_equal "Implicit file content", @loop_calls.first.prompt.to_s
+    assert_equal f.path, @loop_calls.first.prompt.source
   ensure
     f&.close
     f&.unlink
@@ -94,8 +94,8 @@ class TestCLIIntegration < Minitest::Test
     f1 = create_temp_file("Explicit")
     f2 = create_temp_file("Implicit")
     Ralph::CLI.new.run(["--prompt-file", f1.path, f2.path])
-    assert_equal "Explicit", @loop_calls.first.prompt
-    assert_equal f1.path, @loop_calls.first.prompt_source
+    assert_equal "Explicit", @loop_calls.first.prompt.to_s
+    assert_equal f1.path, @loop_calls.first.prompt.source
   ensure
     f1&.close; f1&.unlink
     f2&.close; f2&.unlink

@@ -152,8 +152,7 @@ module Ralph
                 "
               end
 
-              @config.prompt = prompt.to_s
-              @config.prompt_source = prompt.source
+              @config.prompt = prompt
             end
           rescue Prompt::Error => e
             abort e.message

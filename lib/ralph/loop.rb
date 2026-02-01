@@ -38,6 +38,8 @@ module Ralph
 
           Output::Banner.call(agent_name: @agent_config.config_name)
 
+          @prompt = @config.prompt
+
           @state = Storage::State.new(
             active: true,
             iteration: 1,
@@ -46,7 +48,7 @@ module Ralph
             completion_promise: @config.completion_promise,
             tasks_mode: @config.tasks_mode,
             task_promise: @config.task_promise,
-            prompt: @config.prompt,
+            prompt: @prompt.to_s,
             started_at: Time.now.utc.iso8601,
             model: @config.model,
             agent: @config.agent_type
@@ -62,8 +64,8 @@ module Ralph
           @history = Storage::History.new
 
           Output::ConfigSummary.call(
-            prompt: @config.prompt,
-            prompt_source: @config.prompt_source,
+            prompt: @prompt.to_s,
+            prompt_source: @prompt.source,
             completion_promise: @config.completion_promise,
             tasks_mode: @config.tasks_mode,
             task_promise: @config.task_promise,
@@ -157,7 +159,7 @@ module Ralph
         iteration_start  = Helpers.now_ms
 
         # Build prompt for this iteration
-        full_prompt = PromptBuilder.build(@state, @agent_config)
+        full_prompt = @prompt.build_iteration(@state, @agent_config)
 
         # Execute iteration using the Iteration class
         result = @iteration.call(full_prompt, iteration_start: iteration_start)
