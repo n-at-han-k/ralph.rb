@@ -4,47 +4,53 @@ require "fileutils"
 
 module Ralph
   module Storage
-    # Manages persistent AI context for conversational continuity
+    # Represents the persistent AI context file for conversational continuity.
+    #
+    # Always instantiate with Context.new — it represents the file on disk.
+    # Content is read lazily; the file is created on first write/append.
     class Context
-      class << self
-        # --- File Paths ---
-        def state_dir
-          File.join(Dir.pwd, ".ralph")
-        end
+      attr_reader :path
 
-        def context_path
-          File.join(state_dir, "ralph-context.md")
-        end
+      def initialize
+        FileUtils.mkdir_p(dir)
+      end
 
-        # --- Context Management ---
-        def load_context
-          return nil unless File.exist?(context_path)
-          content = File.read(context_path).strip
-          content.empty? ? nil : content
-        rescue StandardError
-          nil
-        end
+      def self.dir
+        @dir ||= File.join(Dir.pwd, ".ralph")
+      end
 
-        def clear_context
-          File.delete(context_path) if File.exist?(context_path)
-        rescue StandardError
-          # ignore
-        end
+      def dir = self.class.dir
 
-        # --- Context Manipulation ---
-        def append_context(new_entry)
-          FileUtils.mkdir_p(state_dir)
-          if File.exist?(context_path)
-            existing = File.read(context_path)
-            File.write(context_path, existing + new_entry)
-          else
-            File.write(context_path, "# Ralph Loop Context\n#{new_entry}")
-          end
-        end
+      def path
+        @path ||= File.join(dir, "ralph-context.md")
+      end
 
-        def write_context(content)
-          FileUtils.mkdir_p(state_dir)
-          File.write(context_path, content)
+      def content
+        if File.exist?(path)
+          text = File.read(path).strip
+          text.empty? ? nil : text
+        end
+      rescue StandardError
+        nil
+      end
+
+      def present? = !content.nil?
+
+      def append(text)
+        if File.exist?(path)
+          write(File.read(path) + text)
+        else
+          write("# Ralph Loop Context\n#{text}")
+        end
+      end
+
+      def write(text)
+        File.write(path, text)
+      end
+
+      def clear
+        if File.exist?(path)
+          File.delete(path) 
         end
       end
     end

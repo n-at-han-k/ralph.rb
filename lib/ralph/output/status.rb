@@ -14,7 +14,7 @@ module Ralph
       def call
         state = Storage::State.load
         history = Storage::History.load_history
-        context = Storage::Context.load_context
+        context = Storage::Context.new
         show_tasks = @options[:tasks_mode] || state&.tasks_mode
 
         print_header
@@ -70,10 +70,10 @@ module Ralph
         end
 
         def print_pending_context(context)
-          return unless context
+          return unless context.present?
 
           puts "\n📝 PENDING CONTEXT (will be injected next iteration):"
-          puts "   #{context.split("\n").join("\n   ")}"
+          puts "   #{context.content.split("\n").join("\n   ")}"
         end
 
         def print_tasks
@@ -110,17 +110,18 @@ module Ralph
         end
 
         def print_history(history)
-          return unless history.iterations.any?
+          iterations = history["iterations"] || []
+          return unless iterations.any?
 
-          puts "\n📊 HISTORY (#{history.iterations.length} iterations)"
-          puts "   Total time:   #{Helpers.format_duration_long(history.total_duration_ms)}"
+          puts "\n📊 HISTORY (#{iterations.length} iterations)"
+          puts "   Total time:   #{Helpers.format_duration_long(history["total_duration_ms"] || 0)}"
 
-          recent = history.iterations.last(5)
+          recent = iterations.last(5)
           print_recent_iterations(recent)
 
-          si = history.struggle_indicators
-          has_repeated = si.repeated_errors.values.any? { |c| c >= 2 }
-          if si.no_progress_iterations >= 3 || si.short_iterations >= 3 || has_repeated
+          si = history["struggle_indicators"] || {}
+          has_repeated = (si["repeated_errors"] || {}).values.any? { |c| c >= 2 }
+          if (si["no_progress_iterations"] || 0) >= 3 || (si["short_iterations"] || 0) >= 3 || has_repeated
             print_struggle_warnings(si)
           end
         end
@@ -128,31 +129,31 @@ module Ralph
         def print_recent_iterations(iterations)
           puts "\n   Recent iterations:"
           iterations.each do |iter|
-            tools = iter.tools_used
+            tools = (iter["tools_used"] || {})
                       .sort_by { |_, v| -v }
                       .first(3)
                       .map { |k, v| "#{k}:#{v}" }
                       .join(" ")
-            status_icon = if iter.completion_detected
+            status_icon = if iter["completion_detected"]
               "✅"
-            elsif iter.exit_code != 0
+            elsif iter["exit_code"] != 0
               "❌"
             else
               "🔄"
             end
-            puts "   #{status_icon} ##{iter.iteration}: #{Helpers.format_duration_long(iter.duration_ms)} | #{tools.empty? ? "no tools" : tools}"
+            puts "   #{status_icon} ##{iter["iteration"]}: #{Helpers.format_duration_long(iter["duration_ms"])} | #{tools.empty? ? "no tools" : tools}"
           end
         end
 
         def print_struggle_warnings(si)
           puts "\n⚠️  STRUGGLE INDICATORS:"
-          if si.no_progress_iterations >= 3
-            puts "   - No file changes in #{si.no_progress_iterations} iterations"
+          if (si["no_progress_iterations"] || 0) >= 3
+            puts "   - No file changes in #{si["no_progress_iterations"]} iterations"
           end
-          if si.short_iterations >= 3
-            puts "   - #{si.short_iterations} very short iterations (< 30s)"
+          if (si["short_iterations"] || 0) >= 3
+            puts "   - #{si["short_iterations"]} very short iterations (< 30s)"
           end
-          top_errors = si.repeated_errors
+          top_errors = (si["repeated_errors"] || {})
                          .select { |_, count| count >= 2 }
                          .sort_by { |_, count| -count }
                          .first(3)

@@ -21,7 +21,7 @@ module Ralph
       @agent_config = agent_config
       @model = model
       @options = options
-      @struggle_indicators = StruggleIndicators.empty
+      @struggle_indicators = { "repeated_errors" => {}, "no_progress_iterations" => 0, "short_iterations" => 0 }
     end
 
     def call(prompt, iteration_start:)
@@ -76,8 +76,8 @@ module Ralph
     # Returns true when the agent appears to be stuck.
     # Should only be called after iteration > 2 for meaningful results.
     def struggling?
-      @struggle_indicators.no_progress_iterations >= 3 ||
-        @struggle_indicators.short_iterations >= 3
+      @struggle_indicators["no_progress_iterations"] >= 3 ||
+        @struggle_indicators["short_iterations"] >= 3
     end
 
     private
@@ -86,23 +86,23 @@ module Ralph
       si = @struggle_indicators
 
       if result.files_modified.empty?
-        si.no_progress_iterations += 1
+        si["no_progress_iterations"] += 1
       else
-        si.no_progress_iterations = 0
+        si["no_progress_iterations"] = 0
       end
 
       if result.duration_ms < 30_000
-        si.short_iterations += 1
+        si["short_iterations"] += 1
       else
-        si.short_iterations = 0
+        si["short_iterations"] = 0
       end
 
       if result.errors.empty?
-        si.repeated_errors = {}
+        si["repeated_errors"] = {}
       else
         result.errors.each do |error|
           key = error[0, 100]
-          si.repeated_errors[key] = (si.repeated_errors[key] || 0) + 1
+          si["repeated_errors"][key] = (si["repeated_errors"][key] || 0) + 1
         end
       end
     end

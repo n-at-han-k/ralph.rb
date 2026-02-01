@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+ruby -Ilib -e 'Dir.glob("test/test_*.rb").each { |f| require_relative f }'

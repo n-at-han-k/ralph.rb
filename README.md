@@ -503,7 +503,7 @@ Output <promise>COMPLETE</promise> when all features pass.
 
 ```
 ralph-wiggum/
-├── bin/ralph.js                  # CLI entrypoint (npm wrapper)
+├── exe/ralph.js                  # CLI entrypoint (npm wrapper)
 ├── ralph.ts                      # Main loop implementation
 ├── package.json                  # Package config
 ├── install.sh / install.ps1     # Installation scripts

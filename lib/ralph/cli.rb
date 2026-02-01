@@ -207,10 +207,10 @@ module Ralph
       def add_context(context_text)
         timestamp = Time.now.utc.iso8601
         new_entry = "\n## Context added at #{timestamp}\n#{context_text}\n"
-        Storage::Context.append_context(new_entry)
+        Storage::Context.new.append(new_entry)
 
         puts "✅ Context added for next iteration"
-        puts "   File: #{Storage::Context.context_path}"
+        puts "   File: #{Storage::Context.new.path}"
 
         Storage::State.load.then do |state|
           if state&.active
@@ -222,8 +222,9 @@ module Ralph
       end
 
       def clear_context
-        if Storage::Context.load_context
-          Storage::Context.clear_context
+        context = Storage::Context.new
+        if context.present?
+          context.clear
           puts "✅ Context cleared"
         else
           puts "ℹ️  No pending context to clear"

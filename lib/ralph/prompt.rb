@@ -27,13 +27,13 @@ module Ralph
     # +state+ is a Storage::State with iteration metadata.
     # +_agent+ is the agent config (reserved for future use).
     def build_iteration(state, _agent)
-      context = Storage::Context.load_context
-      context_section = if context
+      context = Storage::Context.new
+      context_section = if context.present?
         <<~SECTION
 
           ## Additional Context (added by user mid-loop)
 
-          #{context}
+          #{context.content}
 
           ---
         SECTION

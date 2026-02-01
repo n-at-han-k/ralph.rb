@@ -155,7 +155,7 @@ module Ralph
       # ---------- Single iteration ----------
 
       def run_iteration
-        context_at_start = Storage::Context.load_context
+        context_at_start = Storage::Context.new
         iteration_start  = Helpers.now_ms
 
         # Build prompt for this iteration
@@ -249,14 +249,14 @@ module Ralph
         )
         Storage::State.clear
         Storage::History.clear_history
-        Storage::Context.clear_context
+        Storage::Context.new.clear
         :break
       end
 
       def consume_context(context_at_start)
-        if context_at_start
+        if context_at_start.present?
           Output::ContextConsumed.call
-          Storage::Context.clear_context
+          context_at_start.clear
         end
       end
 
