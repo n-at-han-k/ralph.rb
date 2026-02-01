@@ -3,61 +3,30 @@
 module Ralph
 
   class Loop
-    def call(
-      prompt:,
-      min_iterations: 1,
-      max_iterations: 0,
-      completion_promise: "COMPLETE",
-      tasks_mode: false,
-      task_promise: "READY_FOR_NEXT_TASK",
-      model: "",
-      agent_type: "opencode",
-      auto_commit: true,
-      disable_plugins: false,
-      allow_all_permissions: true,
-      prompt_source: "",
-      stream_output: true,
-      verbose_tools: false
-    )
-
-      @prompt             = prompt
-      @min_iterations     = min_iterations
-      @max_iterations     = max_iterations
-      @completion_promise = completion_promise
-      @tasks_mode         = tasks_mode
-      @task_promise       = task_promise
-      @model              = model
-      @agent_type         = agent_type
-      @auto_commit        = auto_commit
-      @disable_plugins    = disable_plugins
-      @allow_all          = allow_all_permissions
-      @prompt_source      = prompt_source
-      @stream_output      = stream_output
-      @verbose_tools      = verbose_tools
-      @current_pid        = nil
-      @stopping           = false
+    def call(config)
+      @config = config
 
       Storage::State.load_state.then do |existing_state|
         if existing_state&.active
           Output::ActiveLoopError.call(iteration: existing_state.iteration, started_at: existing_state.started_at, state_path: Storage::State.state_path)
           exit 1
         else
-          @agent_config = resolve_agent!(agent_type)
+          @agent_config = resolve_agent!(@config.agent_type)
 
           # Initialize iteration executor
           @iteration = Iteration.new(
             agent_config: @agent_config,
-            model: @model,
+            model: @config.model,
             options: {
-              allow_all_permissions: @allow_all,
-              disable_plugins: disable_plugins,
-              stream_output: @stream_output,
-              verbose_tools: @verbose_tools,
-              completion_promise: @completion_promise
+              allow_all_permissions: @config.allow_all_permissions,
+              disable_plugins: @config.disable_plugins,
+              stream_output: @config.stream_output,
+              verbose_tools: @config.verbose_tools,
+              completion_promise: @config.completion_promise
             }
           )
 
-          if disable_plugins
+          if @config.disable_plugins
             Output::NoPluginWarning.call(agent_type: @agent_config.type)
             case @agent_config.type
             when :claude_code
@@ -71,20 +40,20 @@ module Ralph
 
           @state = RalphState.new( active: true,
             iteration: 1,
-            min_iterations: @min_iterations,
-            max_iterations: @max_iterations,
-            completion_promise: @completion_promise,
-            tasks_mode: @tasks_mode,
-            task_promise: @task_promise,
-            prompt: @prompt,
+            min_iterations: @config.min_iterations,
+            max_iterations: @config.max_iterations,
+            completion_promise: @config.completion_promise,
+            tasks_mode: @config.tasks_mode,
+            task_promise: @config.task_promise,
+            prompt: @config.prompt,
             started_at: Time.now.utc.iso8601,
-            model: @model,
-            agent: @agent_type
+            model: @config.model,
+            agent: @config.agent_type
 
           ).tap { Storage::State.save_state _1 }
 
 
-          if @tasks_mode && !File.exist?(Storage::Tasks.tasks_path)
+          if @config.tasks_mode && !File.exist?(Storage::Tasks.tasks_path)
             FileUtils.mkdir_p(Storage::State.state_dir)
             File.write(Storage::Tasks.tasks_path, "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n")
             Output::TasksFileCreated.call(path: Storage::Tasks.tasks_path)
@@ -93,18 +62,18 @@ module Ralph
           @history = Storage::History.new
 
           Output::ConfigSummary.call(
-            prompt: @prompt,
-            prompt_source: @prompt_source,
-            completion_promise: @completion_promise,
-            tasks_mode: @tasks_mode,
-            task_promise: @task_promise,
-            min_iterations: @min_iterations,
-            max_iterations: @max_iterations,
+            prompt: @config.prompt,
+            prompt_source: @config.prompt_source,
+            completion_promise: @config.completion_promise,
+            tasks_mode: @config.tasks_mode,
+            task_promise: @config.task_promise,
+            min_iterations: @config.min_iterations,
+            max_iterations: @config.max_iterations,
             agent_name: @agent_config.config_name,
-            model: @model,
-            disable_plugins: @disable_plugins,
+            model: @config.model,
+            disable_plugins: @config.disable_plugins,
             agent_type: @agent_config.type,
-            allow_all: @allow_all
+            allow_all: @config.allow_all_permissions
           )
 
           setup_signal_handler
@@ -123,15 +92,15 @@ module Ralph
 
       def setup_signal_handler
         Signal.trap("INT") do
-          if @stopping
+          if @config.stopping
             $stderr.puts "\nForce stopping..."
             exit 1
           end
-          @stopping = true
+          @config.stopping = true
           $stderr.puts "\nGracefully stopping Ralph loop..."
-          if @current_pid
+          if @config.current_pid
             begin
-              Process.kill("TERM", @current_pid)
+              Process.kill("TERM", @config.current_pid)
             rescue StandardError
               # process may have exited
             end
@@ -146,13 +115,13 @@ module Ralph
 
       def run_loop
         loop do
-          break if @stopping
+          break if @config.stopping
           break if max_iterations_reached?
 
           Output::IterationHeader.call(
             iteration: @state.iteration,
-            max_iterations: @max_iterations,
-            min_iterations: @min_iterations
+            max_iterations: @config.max_iterations,
+            min_iterations: @config.min_iterations
           )
           outcome = run_iteration
           break if outcome == :break
@@ -163,9 +132,9 @@ module Ralph
       end
 
       def max_iterations_reached?
-        if @max_iterations > 0 && @state.iteration > @max_iterations
+        if @config.max_iterations > 0 && @state.iteration > @config.max_iterations
           Output::MaxIterationsReached.call(
-            max_iterations: @max_iterations,
+            max_iterations: @config.max_iterations,
             total_duration_ms: @history.total_duration_ms
           )
 
@@ -194,7 +163,7 @@ module Ralph
         result = @iteration.call(full_prompt, iteration_start: iteration_start)
 
         # Check for task completion if in tasks mode
-        task_completion_detected = @tasks_mode ? Helpers.check_completion("#{result.stdout_text}\n#{result.stderr_text}", @task_promise) : false
+        task_completion_detected = @config.tasks_mode ? Helpers.check_completion("#{result.stdout_text}\n#{result.stderr_text}", @config.task_promise) : false
 
         print_iteration_summary(
           iteration: @state.iteration,
@@ -221,7 +190,7 @@ module Ralph
 
         consume_context(context_at_start)
 
-        auto_commit_changes if @auto_commit
+        auto_commit_changes if @config.auto_commit
 
         :continue
       rescue StandardError => e
@@ -260,19 +229,19 @@ module Ralph
       def report_task_completion(task_completion_detected, completion_detected)
         return unless task_completion_detected && !completion_detected
 
-        Output::TaskCompletion.call(task_promise: @task_promise, next_iteration: @state.iteration + 1)
+        Output::TaskCompletion.call(task_promise: @config.task_promise, next_iteration: @state.iteration + 1)
       end
 
       def completion(completion_detected)
         return :continue unless completion_detected
 
-        if @state.iteration < @min_iterations
-          Output::CompletionDeferred.call(min_iterations: @min_iterations, next_iteration: @state.iteration + 1)
+        if @state.iteration < @config.min_iterations
+          Output::CompletionDeferred.call(min_iterations: @config.min_iterations, next_iteration: @state.iteration + 1)
           return :continue
         end
 
         Output::CompletionDetected.call(
-          completion_promise: @completion_promise,
+          completion_promise: @config.completion_promise,
           iteration: @state.iteration,
           total_duration_ms: @history.total_duration_ms
         )
@@ -302,13 +271,13 @@ module Ralph
       end
 
       def iteration_error(error, iteration_start)
-        if @current_pid
+        if @config.current_pid
           begin
-            Process.kill("TERM", @current_pid)
+            Process.kill("TERM", @config.current_pid)
           rescue StandardError
             # process may have exited
           end
-          @current_pid = nil
+          @config.current_pid = nil
         end
 
         Output::IterationError.call(iteration: @state.iteration, error: error)

@@ -140,24 +140,26 @@ module Ralph
       end
 
       parser.parse(argv.dup).then do |prompt_parts|
-        begin
-          Prompt.from_parts(prompt_parts, prompt_file: @config.prompt_file).then do |prompt|
-            if prompt.empty?
-              abort "
-                Error: No prompt provided
-                Usage: ralph 'Your task description' [options]
-                Run 'ralph --help' for more information
-              "
-            end
+        # Skip prompt resolution for subcommands that don't need a prompt
+        unless command
+          begin
+            Prompt.from_parts(prompt_parts, prompt_file: @config.prompt_file).then do |prompt|
+              if prompt.empty?
+                abort "
+                  Error: No prompt provided
+                  Usage: ralph 'Your task description' [options]
+                  Run 'ralph --help' for more information
+                "
+              end
 
-            @config.prompt = prompt.to_s
-            @config.prompt_source = prompt.source
+              @config.prompt = prompt.to_s
+              @config.prompt_source = prompt.source
+            end
+          rescue Prompt::Error => e
+            abort e.message
           end
-        rescue Prompt::Error => e
-          abort e.message
         end
       end
-
 
       # Dispatch subcommands
       case command
@@ -189,7 +191,7 @@ module Ralph
         abort "Error: --min-iterations (#{@config.min_iterations}) cannot be greater than --max-iterations (#{@config.max_iterations})"
       end
 
-      Ralph::Loop.new.call(**@config.to_h)
+      Ralph::Loop.new.call(@config)
 
     rescue OptionParser::ParseError => e
       abort "#{e.message}\nRun 'ralph --help' for available options"

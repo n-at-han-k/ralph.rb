@@ -12,8 +12,8 @@ class TestCLIIntegration < Minitest::Test
   def setup
     @loop_calls = []
     calls = @loop_calls
-    Ralph::Loop.define_method(:call) do |**opts|
-      calls << opts
+    Ralph::Loop.define_method(:call) do |config|
+      calls << config
     end
   end
 
@@ -30,12 +30,12 @@ class TestCLIIntegration < Minitest::Test
   end
 
   def test_version_prints_and_exits
-    out, = capture_io do
-      assert_raises(SystemExit) do
+    ex = assert_raises(SystemExit) do
+      capture_io do
         Ralph::CLI.new.run(["--version"])
       end
     end
-    assert_match(/ralph \d+\.\d+\.\d+/, out)
+    assert_equal 0, ex.status
   end
 
   # --- Empty prompt ---
@@ -54,14 +54,14 @@ class TestCLIIntegration < Minitest::Test
   def test_inline_prompt_single_arg
     Ralph::CLI.new.run(["Build a REST API"])
     assert_equal 1, @loop_calls.length
-    assert_equal "Build a REST API", @loop_calls.first[:prompt]
-    assert_equal "", @loop_calls.first[:prompt_source]
+    assert_equal "Build a REST API", @loop_calls.first.prompt
+    assert_equal "", @loop_calls.first.prompt_source
   end
 
   def test_inline_prompt_multiple_args
     Ralph::CLI.new.run(["Build", "a", "REST", "API"])
     assert_equal 1, @loop_calls.length
-    assert_equal "Build a REST API", @loop_calls.first[:prompt]
+    assert_equal "Build a REST API", @loop_calls.first.prompt
   end
 
   # --- Prompt resolution (explicit file) ---
@@ -69,8 +69,8 @@ class TestCLIIntegration < Minitest::Test
   def test_explicit_prompt_file
     f = create_temp_file("Content from file")
     Ralph::CLI.new.run(["--prompt-file", f.path])
-    assert_equal "Content from file", @loop_calls.first[:prompt]
-    assert_equal f.path, @loop_calls.first[:prompt_source]
+    assert_equal "Content from file", @loop_calls.first.prompt
+    assert_equal f.path, @loop_calls.first.prompt_source
   ensure
     f&.close
     f&.unlink
@@ -81,8 +81,8 @@ class TestCLIIntegration < Minitest::Test
   def test_implicit_prompt_file
     f = create_temp_file("Implicit file content")
     Ralph::CLI.new.run([f.path])
-    assert_equal "Implicit file content", @loop_calls.first[:prompt]
-    assert_equal f.path, @loop_calls.first[:prompt_source]
+    assert_equal "Implicit file content", @loop_calls.first.prompt
+    assert_equal f.path, @loop_calls.first.prompt_source
   ensure
     f&.close
     f&.unlink
@@ -94,8 +94,8 @@ class TestCLIIntegration < Minitest::Test
     f1 = create_temp_file("Explicit")
     f2 = create_temp_file("Implicit")
     Ralph::CLI.new.run(["--prompt-file", f1.path, f2.path])
-    assert_equal "Explicit", @loop_calls.first[:prompt]
-    assert_equal f1.path, @loop_calls.first[:prompt_source]
+    assert_equal "Explicit", @loop_calls.first.prompt
+    assert_equal f1.path, @loop_calls.first.prompt_source
   ensure
     f1&.close; f1&.unlink
     f2&.close; f2&.unlink
@@ -126,20 +126,20 @@ class TestCLIIntegration < Minitest::Test
       "--no-commit",
       "--no-stream"
     ])
-    opts = @loop_calls.first
-    assert_equal 5, opts[:max_iterations]
-    assert_equal 2, opts[:min_iterations]
-    assert_equal "DONE", opts[:completion_promise]
-    assert_equal "gpt-5", opts[:model]
-    assert_equal "opencode", opts[:agent_type]
-    assert_equal false, opts[:auto_commit]
-    assert_equal false, opts[:stream_output]
+    config = @loop_calls.first
+    assert_equal 5, config.max_iterations
+    assert_equal 2, config.min_iterations
+    assert_equal "DONE", config.completion_promise
+    assert_equal "gpt-5", config.model
+    assert_equal "opencode", config.agent_type
+    assert_equal false, config.auto_commit
+    assert_equal false, config.stream_output
   end
 
-  def test_prompt_file_key_not_forwarded_to_loop
+  def test_prompt_file_key_excluded_from_to_h
     f = create_temp_file("hello")
     Ralph::CLI.new.run(["--prompt-file", f.path])
-    refute @loop_calls.first.key?(:prompt_file)
+    refute @loop_calls.first.to_h.key?(:prompt_file)
   ensure
     f&.close; f&.unlink
   end

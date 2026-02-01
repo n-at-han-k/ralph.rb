@@ -18,7 +18,7 @@ module Ralph
       prompt_file
     ])
 
-    attr_reader(*%i[
+    attr_accessor(*%i[
       current_pid
       stopping
     ])
