@@ -41,17 +41,16 @@ module Ralph
         new(files)
       end
 
-      # Return list of files that changed between two snapshots
-      def self.modified_since(before, after)
+      # Return list of files that changed between this snapshot and a later one
+      def modified_since(other)
         changed = []
 
-        after.files.each do |file, hash|
-          prev_hash = before.files[file]
-          changed << file if prev_hash != hash
+        other.files.each do |file, hash|
+          changed << file if files[file] != hash
         end
 
-        before.files.each_key do |file|
-          changed << file unless after.files.key?(file)
+        files.each_key do |file|
+          changed << file unless other.files.key?(file)
         end
 
         changed

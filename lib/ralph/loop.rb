@@ -164,39 +164,51 @@ module Ralph
         full_prompt = @prompt.build_iteration(@state, @agent_config)
 
         # Execute iteration using the Iteration class
-        result = @iteration.call(full_prompt, iteration_start: iteration_start)
+        @iteration.call(full_prompt, iteration_start: iteration_start).then do |result|
+          Output::IterationSummary.call(
+            iteration: @state.iteration,
+            elapsed_ms: result.duration_ms,
+            tool_counts: result.tool_counts,
+            exit_code: result.exit_code,
+            completion_detected: result.completion_detected
+          )
 
-        # Check for task completion if in tasks mode
-        task_completion_detected = @config.tasks_mode ? check_completion("#{result.stdout_text}\n#{result.stderr_text}", @config.task_promise) : false
+          @history.record(
+            state_iteration: @state.iteration,
+            iteration_start: iteration_start,
+            result: result,
+            struggle_indicators: @iteration.struggle_indicators
+          )
 
-        print_iteration_summary(
-          iteration: @state.iteration,
-          elapsed_ms: result.duration_ms,
-          tool_counts: result.tool_counts,
-          exit_code: result.exit_code,
-          completion_detected: result.completion_detected
-        )
+          # Check for task completion if in tasks mode
+          if @config.tasks_mode
+            task_completion_detected = check_completion(
+              "#{result.stdout_text}\n#{result.stderr_text}",
+              @config.task_promise
+            )
+          else
+            task_completion_detected = false
+          end
 
-        @history.record(
-          state_iteration: @state.iteration,
-          iteration_start: iteration_start,
-          result: result,
-          struggle_indicators: @iteration.struggle_indicators
-        )
+          warn_if_struggling
+          detect_plugin_error!("#{result.stdout_text}\n#{result.stderr_text}")
+          warn_nonzero_exit(result.exit_code)
+          report_task_completion(task_completion_detected, result.completion_detected)
 
-        warn_if_struggling
-        detect_plugin_error!("#{result.stdout_text}\n#{result.stderr_text}")
-        warn_nonzero_exit(result.exit_code)
-        report_task_completion(task_completion_detected, result.completion_detected)
+          outcome = completion(result.completion_detected)
+          if outcome == :break
+            outcome
+          else
+            consume_context(context_at_start)
 
-        outcome = completion(result.completion_detected)
-        return outcome if outcome == :break
+            if @config.auto_commit
+              auto_commit_changes 
+            end
 
-        consume_context(context_at_start)
+            :continue
+          end
+        end
 
-        auto_commit_changes if @config.auto_commit
-
-        :continue
       rescue StandardError => e
         iteration_error(e, iteration_start)
         :continue
@@ -225,34 +237,39 @@ module Ralph
       end
 
       def warn_nonzero_exit(exit_code)
-        return if exit_code == 0
-
-        Output::NonzeroExitWarning.call(agent_name: @agent_config.config_name, exit_code: exit_code)
+        unless exit_code == 0
+          Output::NonzeroExitWarning.call(agent_name: @agent_config.config_name, exit_code: exit_code)
+        end
       end
 
       def report_task_completion(task_completion_detected, completion_detected)
-        return unless task_completion_detected && !completion_detected
-
-        Output::TaskCompletion.call(task_promise: @config.task_promise, next_iteration: @state.iteration + 1)
+        if task_completion_detected && !completion_detected
+          Output::TaskCompletion.call(task_promise: @config.task_promise, next_iteration: @state.iteration + 1)
+        end
       end
 
       def completion(completion_detected)
-        return :continue unless completion_detected
+        if completion_detected
+          :continue
 
-        if @state.iteration < @config.min_iterations
-          Output::CompletionDeferred.call(min_iterations: @config.min_iterations, next_iteration: @state.iteration + 1)
-          return :continue
+        elsif @state.iteration < @config.min_iterations
+          Output::CompletionDeferred.call(
+            min_iterations: @config.min_iterations, next_iteration: @state.iteration + 1
+          )
+          :continue
+
+        else
+          Output::CompletionDetected.call(
+            completion_promise: @config.completion_promise,
+            iteration: @state.iteration,
+            total_duration_ms: @history.total_duration_ms
+          )
+          Storage::State.clear
+          Storage::History.clear_history
+          Storage::Context.new.clear
+          :break
+
         end
-
-        Output::CompletionDetected.call(
-          completion_promise: @config.completion_promise,
-          iteration: @state.iteration,
-          total_duration_ms: @history.total_duration_ms
-        )
-        Storage::State.clear
-        Storage::History.clear_history
-        Storage::Context.new.clear
-        :break
       end
 
       def consume_context(context_at_start)
@@ -264,12 +281,12 @@ module Ralph
 
       def auto_commit_changes
         status = `git status --porcelain 2>/dev/null`.strip
-        return if status.empty?
-
-        system("git", "add", "-A")
-        system("git", "commit", "-m", "Ralph iteration #{@state.iteration}: work in progress",
-               [:out, :err] => File::NULL)
-        Output::AutoCommitNotice.call(iteration: @state.iteration)
+        unless if status.empty?
+          system("git", "add", "-A")
+          system("git", "commit", "-m", "Ralph iteration #{@state.iteration}: work in progress",
+                 [:out, :err] => File::NULL)
+          Output::AutoCommitNotice.call(iteration: @state.iteration)
+        end
       rescue StandardError
         # git commit failed, ok
       end
@@ -294,18 +311,6 @@ module Ralph
 
         advance_iteration
         sleep 2
-      end
-
-      # ---------- Display ----------
-
-      def print_iteration_summary(iteration:, elapsed_ms:, tool_counts:, exit_code:, completion_detected:)
-        Output::IterationSummary.call(
-          iteration: iteration,
-          elapsed_ms: elapsed_ms,
-          tool_counts: tool_counts,
-          exit_code: exit_code,
-          completion_detected: completion_detected
-        )
       end
   end
 end

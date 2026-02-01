@@ -28,7 +28,7 @@ module Ralph
     end
 
     def files_modified
-      Git::FileSnapshot.modified_since(snapshot_before, snapshot_after)
+      snapshot_before.modified_since(snapshot_after)
     end
 
     def completion_detected

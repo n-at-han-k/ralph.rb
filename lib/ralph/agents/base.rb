@@ -2,29 +2,6 @@
 
 module Ralph
   module Agents
-    AGENT_NAME_MAP = {
-      "opencode" => :opencode,
-      "claude-code" => :claude_code,
-      "codex" => :codex
-    }.freeze
-
-    module_function
-
-    def resolve(name_str)
-      sym = AGENT_NAME_MAP[name_str]
-      return nil unless sym
-
-      {
-        opencode: -> { OpenCode.new },
-        claude_code: -> { ClaudeCode.new },
-        codex: -> { Codex.new }
-      }[sym].call
-    end
-
-    def valid_agent_names
-      AGENT_NAME_MAP.keys
-    end
-
     class Base
       include ::Ralph::Helpers
 
