@@ -118,7 +118,7 @@ module Ralph
 
         o.on("--list-tasks", "Display the current task list") do
           begin
-            Storage::Tasks.load_tasks.then do |tasks|
+            Storage::Tasks.new.load_tasks.then do |tasks|
               if tasks
                 tasks.display_with_indices
               else
@@ -135,7 +135,7 @@ module Ralph
 
         o.on("--add-task DESC", "Add a new task to the list") do |description|
           begin
-            Storage::Tasks.add_task(description)
+            Storage::Tasks.new.add_task(description)
             puts "✅ Task added: \"#{description}\""
           rescue StandardError => e
             $stderr.puts "Error adding task: #{e}"
@@ -147,7 +147,7 @@ module Ralph
 
         o.on("--remove-task N", Integer, "Remove task at index N") do |task_index|
           begin
-            Storage::Tasks.remove_task(task_index)
+            Storage::Tasks.new.remove_task(task_index)
             puts "✅ Removed task #{task_index} and its subtasks"
           rescue IndexError => e
             $stderr.puts "Error: #{e.message}"
@@ -186,8 +186,8 @@ module Ralph
     end
 
     def run(argv = ARGV)
-      @parser.parse(argv.dup).then do |prompt_parts|
-        Prompt.from_parts(prompt_parts, prompt_file: @config.prompt_file).then do |prompt|
+      @parser.parse(argv.dup).then do |remaining_args|
+        Prompt.from_parts(remaining_args, prompt_file: @config.prompt_file).then do |prompt|
           if prompt.empty?
             abort "
               Error: No prompt provided

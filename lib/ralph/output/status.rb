@@ -80,9 +80,10 @@ module Ralph
         end
 
         def print_tasks
-          if File.exist?(Storage::Tasks.tasks_path)
+          tasks_storage = Storage::Tasks.new
+          if File.exist?(tasks_storage.path)
             begin
-              tasks_content = File.read(Storage::Tasks.tasks_path)
+              tasks_content = File.read(tasks_storage.path)
               tasks = Tasks.parse(tasks_content)
               print_current_tasks(tasks)
             rescue StandardError

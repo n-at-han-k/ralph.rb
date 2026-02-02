@@ -4,81 +4,88 @@ require "fileutils"
 
 module Ralph
   module Storage
-    # Manages task tracking and workflow coordination
+    # Manages task tracking and workflow coordination.
+    #
+    # Always instantiate with Tasks.new — it represents the tasks file on disk.
+    # Follows the same instance-based pattern as Context and History.
     class Tasks
-      class << self
-        # --- File Paths ---
-        def state_dir
-          File.join(Dir.pwd, ".ralph")
-        end
+      def initialize
+        FileUtils.mkdir_p(dir)
+      end
 
-        def tasks_path
-          File.join(state_dir, "ralph-tasks.md")
-        end
+      def self.dir
+        File.join(Dir.pwd, ".ralph")
+      end
 
-        # --- Tasks Management ---
-        def load_tasks
-          return nil unless File.exist?(tasks_path)
-          content = File.read(tasks_path)
+      def dir = self.class.dir
+
+      def self.path
+        File.join(dir, "ralph-tasks.md")
+      end
+
+      def path = self.class.path
+
+      # --- Tasks Management ---
+      def load_tasks
+        if File.exist?(path)
+          content = File.read(path)
           TasksCollection.parse(content)
-        rescue StandardError
-          nil
         end
+      rescue StandardError
+        nil
+      end
 
-        def save_tasks(tasks)
-          FileUtils.mkdir_p(state_dir)
-          content = "# Ralph Tasks\n\n"
-          tasks.each do |task|
-            content << task.to_s << "\n"
-            task.subtasks.each do |subtask|
-              content << "  #{subtask.to_s}\n"
-            end
+      def save_tasks(tasks)
+        content = "# Ralph Tasks\n\n"
+        tasks.each do |task|
+          content << task.to_s << "\n"
+          task.subtasks.each do |subtask|
+            content << "  #{subtask}\n"
           end
-          File.write(tasks_path, content)
         end
+        File.write(path, content)
+      end
 
-        def clear_tasks
-          File.delete(tasks_path) if File.exist?(tasks_path)
-        rescue StandardError
-          # ignore
-        end
+      def clear_tasks
+        File.delete(path) if File.exist?(path)
+      rescue StandardError
+        # ignore
+      end
 
-        def tasks_exist?
-          File.exist?(tasks_path)
-        end
+      def tasks_exist?
+        File.exist?(path)
+      end
 
-        # --- Single Task Operations ---
+      # --- Single Task Operations ---
 
-        # Add a new task by description string.
-        # Creates the tasks file if it doesn't exist.
-        def add_task(description)
-          tasks = load_tasks || TasksCollection.new
-          task = Task.new(text: description, status: :todo)
-          tasks.add(task)
-          save_tasks(tasks)
-          task
-        end
+      # Add a new task by description string.
+      # Creates the tasks file if it doesn't exist.
+      def add_task(description)
+        tasks = load_tasks || TasksCollection.new
+        task = Task.new(text: description, status: :todo)
+        tasks.add(task)
+        save_tasks(tasks)
+        task
+      end
 
-        # Remove a task by 1-based index.
-        # Returns the removed Task.
-        # Raises IndexError if index is out of range.
-        # Raises RuntimeError if no tasks file exists.
-        def remove_task(index)
-          raise "No tasks file found" unless tasks_exist?
+      # Remove a task by 1-based index.
+      # Returns the removed Task.
+      # Raises IndexError if index is out of range.
+      # Raises RuntimeError if no tasks file exists.
+      def remove_task(index)
+        raise "No tasks file found" unless tasks_exist?
 
-          tasks = load_tasks
-          removed = tasks.remove_at(index)
-          save_tasks(tasks)
-          removed
-        end
+        tasks = load_tasks
+        removed = tasks.remove_at(index)
+        save_tasks(tasks)
+        removed
+      end
 
-        # --- Task Initialization ---
-        def initialize_tasks_file
-          FileUtils.mkdir_p(state_dir)
-          content = "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n"
-          File.write(tasks_path, content)
-          tasks_path
-        end
+      # --- Task Initialization ---
+      def initialize_tasks_file
+        content = "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n"
+        File.write(path, content)
+        path
       end
     end
 

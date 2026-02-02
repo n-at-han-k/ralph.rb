@@ -14,38 +14,15 @@ module Ralph
         end
       end
 
-      def type
-        raise NotImplementedError
-      end
+      def type        = raise NotImplementedError
+      def command     = raise NotImplementedError
+      def config_name = raise NotImplementedError
 
-      def command
-        raise NotImplementedError
-      end
+      def parse_tool_output(_line) = raise NotImplementedError
+      def build_args(_prompt, _model, _options) = raise NotImplementedError
 
-      def config_name
-        raise NotImplementedError
-      end
+      def build_env(_options) = ENV.to_h.dup
 
-      def build_args(_prompt, _model, _options)
-        raise NotImplementedError
-      end
-
-      def build_env(_options)
-        ENV.to_h.dup
-      end
-
-      def parse_tool_output(_line)
-        raise NotImplementedError
-      end
-
-      # Executes the agent process and returns an ExecutionResult.
-      #
-      # options:
-      #   :model                  - model name string
-      #   :allow_all_permissions  - boolean
-      #   :disable_plugins        - boolean (passed to build_env as filter_plugins)
-      #   :stream_output          - boolean, whether to stream or capture
-      #   :on_line                - Proc(line, is_error) called for each output line (streaming mode)
       def execute(prompt, options = {})
         command_args = build_args(prompt, options[:model],
                                   { allow_all_permissions: options[:allow_all_permissions] })
@@ -69,19 +46,17 @@ module Ralph
       # Collects tool usage counts from output text.
       # Delegates to parse_tool_output for each line.
       def collect_tool_counts(text)
-        counts = Hash.new(0)
-        text.each_line do |line|
-          tool = parse_tool_output(line)
-          counts[tool] += 1 if tool
+        Hash.new(0).tap do |counts|
+          text.each_line do |line|
+            tool = parse_tool_output(line)
+            counts[tool] += 1 if tool
+          end
         end
-        counts
       end
 
       # Returns a fatal error message if one is detected in the output,
       # or nil if no fatal error is found. Subclasses may override.
-      def detect_fatal_error(_output)
-        nil
-      end
+      def detect_fatal_error(_output) = nil
 
       # Extracts error patterns from agent output. Subclasses may override
       # for agent-specific error formats.
@@ -113,64 +88,64 @@ module Ralph
 
       private
 
-      def execute_streaming(environment, full_command, on_line)
-        tool_counts = Hash.new(0)
-        stdout_text = +""
-        stderr_text = +""
-        mutex = Mutex.new
+        def execute_streaming(environment, full_command, on_line)
+          tool_counts = Hash.new(0)
+          stdout_text = +""
+          stderr_text = +""
+          mutex = Mutex.new
 
-        stdin, stdout, stderr, wait_thread = Open3.popen3(environment, *full_command)
-        stdin.close
+          stdin, stdout, stderr, wait_thread = Open3.popen3(environment, *full_command)
+          stdin.close
 
-        stdout_reader = stream_reader_thread(stdout, stdout_text, mutex, tool_counts, on_line, false)
-        stderr_reader = stream_reader_thread(stderr, stderr_text, mutex, tool_counts, on_line, true)
+          stdout_reader = stream_reader_thread(stdout, stdout_text, mutex, tool_counts, on_line, false)
+          stderr_reader = stream_reader_thread(stderr, stderr_text, mutex, tool_counts, on_line, true)
 
-        stdout_reader.join
-        stderr_reader.join
-        exit_status = wait_thread.value
+          stdout_reader.join
+          stderr_reader.join
+          exit_status = wait_thread.value
 
-        ExecutionResult.new(
-          stdout_text: stdout_text,
-          stderr_text: stderr_text,
-          tool_counts: tool_counts,
-          exit_code: exit_status.exitstatus || 1
-        )
-      end
-
-      def execute_captured(environment, full_command)
-        stdout, stderr, status = Open3.capture3(environment, *full_command, stdin_data: "")
-        tool_counts = collect_tool_counts("#{stdout}\n#{stderr}")
-
-        ExecutionResult.new(
-          stdout_text: stdout,
-          stderr_text: stderr,
-          tool_counts: tool_counts,
-          exit_code: status.exitstatus || 1
-        )
-      end
-
-      def stream_reader_thread(io, text_buffer, mutex, tool_counts, on_line, is_error)
-        Thread.new do
-          buffer = +""
-          while (chunk = io.read(4096))
-            text_buffer << chunk
-            buffer << chunk
-            while (index = buffer.index("\n"))
-              line = buffer.slice!(0, index + 1).chomp
-              tool = parse_tool_output(line)
-              mutex.synchronize { tool_counts[tool] += 1 } if tool
-              on_line.call(line, is_error, tool) if on_line
-            end
-          end
-          unless buffer.empty?
-            tool = parse_tool_output(buffer)
-            mutex.synchronize { tool_counts[tool] += 1 } if tool
-            on_line.call(buffer, is_error, tool) if on_line
-          end
-        rescue IOError
-          # stream closed
+          ExecutionResult.new(
+            stdout_text: stdout_text,
+            stderr_text: stderr_text,
+            tool_counts: tool_counts,
+            exit_code: exit_status.exitstatus || 1
+          )
         end
-      end
+
+        def execute_captured(environment, full_command)
+          stdout, stderr, status = Open3.capture3(environment, *full_command, stdin_data: "")
+          tool_counts = collect_tool_counts("#{stdout}\n#{stderr}")
+
+          ExecutionResult.new(
+            stdout_text: stdout,
+            stderr_text: stderr,
+            tool_counts: tool_counts,
+            exit_code: status.exitstatus || 1
+          )
+        end
+
+        def stream_reader_thread(io, text_buffer, mutex, tool_counts, on_line, is_error)
+          Thread.new do
+            buffer = +""
+            while (chunk = io.read(4096))
+              text_buffer << chunk
+              buffer << chunk
+              while (index = buffer.index("\n"))
+                line = buffer.slice!(0, index + 1).chomp
+                tool = parse_tool_output(line)
+                mutex.synchronize { tool_counts[tool] += 1 } if tool
+                on_line.call(line, is_error, tool) if on_line
+              end
+            end
+            unless buffer.empty?
+              tool = parse_tool_output(buffer)
+              mutex.synchronize { tool_counts[tool] += 1 } if tool
+              on_line.call(buffer, is_error, tool) if on_line
+            end
+          rescue IOError
+            # stream closed
+          end
+        end
     end
   end
 end

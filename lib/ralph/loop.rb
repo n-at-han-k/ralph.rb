@@ -61,8 +61,7 @@ module Ralph
         else
           Output::Iteration::Header.call(@loop)
 
-          iteration = Iteration.new(self)
-          iteration.run.then do |result|
+          Iteration.new(self).run.then do |result|
             if result
               Output::Iteration::Summary.call(self, result)
 

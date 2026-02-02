@@ -106,7 +106,7 @@ module Ralph
     private
 
       def build_tasks_section(state)
-        tasks_path = Storage::Tasks.tasks_path
+        tasks_path = Storage::Tasks.new.path
         unless File.exist?(tasks_path)
           return <<~SECTION
 

@@ -14,15 +14,12 @@ module Ralph
           ╚#{'=' * 66}╝
         BANNER
 
-        if loop_context.config.tasks_mode && !File.exist?(Storage::Tasks.tasks_path)
-          FileUtils.mkdir_p(Storage::State.dir)
-
-          File.write(
-            Storage::Tasks.tasks_path,
-            "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n"
-          )
-
-          Output::TasksFileCreated.call(path: Storage::Tasks.tasks_path)
+        if loop_context.config.tasks_mode
+          tasks_storage = Storage::Tasks.new
+          unless File.exist?(tasks_storage.path)
+            tasks_storage.initialize_tasks_file
+            Output::TasksFileCreated.call(path: tasks_storage.path)
+          end
         end
 
         Output::ConfigSummary.call(loop_context)

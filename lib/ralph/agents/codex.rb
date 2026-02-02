@@ -3,17 +3,10 @@
 module Ralph
   module Agents
     class Codex < Base
-      def type
-        :codex
-      end
 
-      def command
-        "codex"
-      end
-
-      def config_name
-        "Codex"
-      end
+      def type = :codex
+      def command = "codex"
+      def config_name = "Codex"
 
       def build_args(prompt, model, options)
         args = ["exec"]

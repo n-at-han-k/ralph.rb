@@ -3,17 +3,10 @@
 module Ralph
   module Agents
     class ClaudeCode < Base
-      def type
-        :claude_code
-      end
 
-      def command
-        "claude"
-      end
-
-      def config_name
-        "Claude Code"
-      end
+      def type = :claude_code
+      def command = "claude"
+      def config_name = "Claude Code"
 
       def build_args(prompt, model, options)
         args = ["-p", prompt]

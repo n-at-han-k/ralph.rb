@@ -3,17 +3,10 @@
 module Ralph
   module Agents
     class OpenCode < Base
-      def type
-        :opencode
-      end
 
-      def command
-        "opencode"
-      end
-
-      def config_name
-        "OpenCode"
-      end
+      def type = :opencode
+      def command = "opencode"
+      def config_name = "OpenCode"
 
       def build_args(prompt, model, _options)
         args = ["run"]
