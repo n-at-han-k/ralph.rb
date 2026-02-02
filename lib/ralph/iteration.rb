@@ -65,12 +65,7 @@ module Ralph
       snapshot_before = Git::FileSnapshot.capture
 
       if @config.stream_output
-        heartbeat = Threads::Heartbeat.new(
-          iteration_start: iteration_start,
-          heartbeat_interval_ms: @heartbeat_interval_ms,
-          timing: @timing,
-          mutex: @mutex
-        )
+        heartbeat = Threads::Heartbeat.new(iteration_start, @heartbeat_interval_ms, @timing, @mutex)
       end
 
       @agent.execute(

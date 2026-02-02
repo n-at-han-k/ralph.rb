@@ -3,7 +3,7 @@
 module Ralph
   module Threads
     class StreamReader
-      def initialize(io:, text_buffer:, mutex:, tool_counts:, on_line:, is_error:, tool_parser:)
+      def initialize(io, text_buffer, mutex, tool_counts, on_line, is_error, tool_parser)
         @io = io
         @text_buffer = text_buffer
         @mutex = mutex

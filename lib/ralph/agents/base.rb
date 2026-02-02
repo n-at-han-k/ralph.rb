@@ -98,14 +98,10 @@ module Ralph
           stdin.close
 
           stdout_reader = Threads::StreamReader.new(
-            io: stdout, text_buffer: stdout_text, mutex: mutex,
-            tool_counts: tool_counts, on_line: on_line, is_error: false,
-            tool_parser: method(:parse_tool_output)
+            stdout, stdout_text, mutex, tool_counts, on_line, false, method(:parse_tool_output)
           )
           stderr_reader = Threads::StreamReader.new(
-            io: stderr, text_buffer: stderr_text, mutex: mutex,
-            tool_counts: tool_counts, on_line: on_line, is_error: true,
-            tool_parser: method(:parse_tool_output)
+            stderr, stderr_text, mutex, tool_counts, on_line, true, method(:parse_tool_output)
           )
 
           stdout_reader.join

@@ -5,7 +5,7 @@ module Ralph
     class Heartbeat
       include ::Ralph::Helpers
 
-      def initialize(iteration_start:, heartbeat_interval_ms:, timing:, mutex:)
+      def initialize(iteration_start, heartbeat_interval_ms, timing, mutex)
         @iteration_start = iteration_start
         @heartbeat_interval_ms = heartbeat_interval_ms
         @timing = timing

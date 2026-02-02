@@ -518,13 +518,87 @@ ralph-wiggum/
 └── uninstall.sh / uninstall.ps1 # Uninstallation scripts
 ```
 
-### State Files (in .ralph/)
+### State Files (in `.ralph/`)
 
-During operation, Ralph stores state in `.ralph/`:
-- `ralph-loop.state.json` - Active loop state
-- `ralph-history.json` - Iteration history and metrics
-- `ralph-context.md` - Pending context for next iteration
-- `ralph-tasks.md` - Task list for Tasks Mode (created when `--tasks` is used)
+During operation, Ralph stores state in `.ralph/`. Here's what each file contains:
+
+#### `ralph-loop.state.json` (gitignored)
+
+Tracks the active loop session. Deleted when the loop ends.
+
+```json
+{
+  "active": true,
+  "iteration": 3,
+  "minIterations": 1,
+  "maxIterations": 10,
+  "completionPromise": "COMPLETE",
+  "tasksMode": true,
+  "taskPromise": "READY_FOR_NEXT_TASK",
+  "prompt": "Build a REST API for todos with CRUD operations and tests.",
+  "startedAt": "2026-02-02T12:00:00Z",
+  "model": "claude-sonnet-4",
+  "agent": "claude-code"
+}
+```
+
+#### `ralph-history.json`
+
+Records every iteration -- timing, tools used, files changed, errors, and struggle indicators for detecting when the agent is stuck.
+
+```json
+{
+  "iterations": [
+    {
+      "iteration": 1,
+      "started_at": "2026-02-02T12:00:00Z",
+      "ended_at": "2026-02-02T12:05:30Z",
+      "duration_ms": 330000,
+      "tools_used": { "Read": 5, "Edit": 3, "Bash": 2 },
+      "files_modified": ["lib/auth.rb", "test/auth_test.rb"],
+      "exit_code": 0,
+      "completion_detected": false,
+      "errors": []
+    },
+    {
+      "iteration": 2,
+      "started_at": "2026-02-02T12:05:31Z",
+      "ended_at": "2026-02-02T12:07:15Z",
+      "duration_ms": 104000,
+      "tools_used": { "Edit": 4, "Bash": 3, "Read": 2 },
+      "files_modified": ["lib/auth.rb"],
+      "exit_code": 0,
+      "completion_detected": false,
+      "errors": []
+    }
+  ],
+  "total_duration_ms": 434000,
+  "struggle_indicators": {
+    "repeated_errors": {},
+    "no_progress_iterations": 0,
+    "short_iterations": 0
+  }
+}
+```
+
+`struggle_indicators` tracks signs the agent is spinning its wheels:
+- `repeated_errors` -- error messages that keep recurring (keyed by message, valued by count)
+- `no_progress_iterations` -- consecutive iterations where no files were modified
+- `short_iterations` -- consecutive iterations under 30 seconds (agent likely not doing real work)
+
+#### `ralph-context.md`
+
+Holds context injected via `--add-context` for the next iteration. The first write adds a header, subsequent appends concatenate directly. Content is included in the prompt sent to the agent.
+
+```markdown
+# Ralph Loop Context
+The auth module uses JWT tokens and the test suite expects a running Redis instance.
+Focus on fixing the login endpoint before moving to registration.
+```
+
+#### `ralph-tasks.md`
+
+Task list for Tasks Mode (created when `--tasks` is used). Both machine-parsed and human-editable. See [Tasks Mode](#tasks-mode) for details on the checkbox syntax (`[ ]` todo, `[/]` in progress, `[x]` complete).
 
 ## Uninstall
 
