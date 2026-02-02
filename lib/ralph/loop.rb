@@ -11,10 +11,14 @@ module Ralph
   class Loop
     include ::Ralph::Helpers
 
-    attr_reader :config, :agent, :state, :history, :prompt, :struggle_indicators
+    attr_reader :config, :agent, :state, :history, :context, :tasks, :prompt, :struggle_indicators
 
-    def initialize(config)
+    def initialize(config, state:, history:, context:, tasks:)
       @config = config
+      @state = state
+      @history = history
+      @context = context
+      @tasks = tasks
 
       @struggle_indicators = {
         repeated_errors: {},
@@ -22,12 +26,11 @@ module Ralph
         short_iterations: 0
       }
 
-      @prompt  = @config.prompt
-      @state   = Storage::State.from_config(@config, prompt: @prompt).tap(&:save)
-      @history = Storage::History.new
+      @prompt = @config.prompt
+      @state.save
     end
 
-    def existing_state = @_existing_state ||= Storate::State.load
+    def existing_state = @_existing_state ||= Storage::State.load
 
     def run
       if existing_state&.active
@@ -60,7 +63,7 @@ module Ralph
           break
         elsif max_iterations_reached?
           Output::MaxIterationsReached.call(self)
-          Storage::State.clear
+          @state.clear
           break
         else
           Output::Iteration::Header.call(@loop)
@@ -85,7 +88,7 @@ module Ralph
                 agent.detect_fatal_error(combined_output).then do |fatal_error|
                   if fatal_error
                     Output::PluginError.call
-                    Storage::State.clear
+                    @state.clear
                     exit 1
                   end
                 end
@@ -102,9 +105,9 @@ module Ralph
 
                 if !result.completion_detected && @state.iteration >= @config.min_iterations
                   Output::CompletionDetected.call(self)
-                  Storage::State.clear
+                  @state.clear
                   Storage::History.clear_history
-                  Storage::Context.new.clear
+                  @context.clear
                   break
                 else
                   if iteration.context_at_start.present?
@@ -151,7 +154,7 @@ module Ralph
               # process may have exited
             end
           end
-          Storage::State.clear
+          @state.clear
           warn 'Loop cancelled.'
           exit 0
         end

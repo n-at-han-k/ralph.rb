@@ -13,7 +13,7 @@ class TestCLIIntegration < Minitest::Test
     calls = @loop_calls
     Ralph::Loop.alias_method(:_original_initialize, :initialize)
     Ralph::Loop.alias_method(:_original_run, :run)
-    Ralph::Loop.define_method(:initialize) do |config|
+    Ralph::Loop.define_method(:initialize) do |config, state:, history:, context:, tasks:|
       calls << config
     end
     Ralph::Loop.define_method(:run) do

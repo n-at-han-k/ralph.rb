@@ -4,29 +4,30 @@ module Ralph
   class PromptTemplate
     class Error < StandardError; end
 
-    attr_reader :user_prompt
+    attr_reader :user_prompt, :context, :tasks
 
-    def initialize(user_prompt)
+    def initialize(user_prompt, context: nil, tasks: nil)
       @user_prompt = user_prompt
+      @context = context
+      @tasks = tasks
     end
 
     def to_s = @user_prompt
     def empty? = @user_prompt.strip.empty?
 
     def context_section
-      @_context_section ||= Storage::Context.new.then do |context|
-        if context.present?
+      @_context_section ||=
+        if @context.present?
           "
             ## Additional Context (added by user mid-loop)
 
-            #{context.content}
+            #{@context.content}
 
             ---
           "
         else
           ""
         end
-      end
     end
 
     def task_mode_prompt(state)
@@ -104,7 +105,7 @@ module Ralph
     private
 
       def build_tasks_section(state)
-        tasks_path = Storage::Tasks.new.path
+        tasks_path = @tasks.path
         unless File.exist?(tasks_path)
           return <<~SECTION
 
@@ -174,8 +175,8 @@ module Ralph
       end
 
       class << self
-        def inject(user_prompt)
-          new(user_prompt)
+        def inject(user_prompt, context:, tasks:)
+          new(user_prompt, context: context, tasks: tasks)
         end
       end
   end

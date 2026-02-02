@@ -46,7 +46,7 @@ module Ralph
       @iteration_start = now_ms
     end
 
-    def context_at_start = @_context_at_start ||= Storage::Context.new
+    def context_at_start = @_context_at_start ||= @loop.context
 
     def run
       snapshot_before = Git::FileSnapshot.capture

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "open3"
+
 module Ralph
   module Git
     # Captures and compares file state via git for change detection
@@ -14,23 +16,23 @@ module Ralph
       def self.capture
         files = {}
         begin
-          status = `git status --porcelain 2>/dev/null`.strip
-          tracked = `git ls-files 2>/dev/null`.strip
+          status, _, _ = Open3.capture3("git", "status", "--porcelain")
+          tracked, _, _ = Open3.capture3("git", "ls-files")
 
           all_files = Set.new
-          status.each_line do |line|
+          status.strip.each_line do |line|
             name = line[3..]&.strip
             all_files.add(name) if name && !name.empty?
           end
-          tracked.each_line do |file|
+          tracked.strip.each_line do |file|
             f = file.strip
             all_files.add(f) unless f.empty?
           end
 
           all_files.each do |file|
             begin
-              hash = `git hash-object #{file} 2>/dev/null`.strip
-              files[file] = hash unless hash.empty?
+              hash, _, _ = Open3.capture3("git", "hash-object", file)
+              files[file] = hash.strip unless hash.strip.empty?
             rescue StandardError
               # skip
             end
