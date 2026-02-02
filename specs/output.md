@@ -64,7 +64,7 @@ Output classes are required where they are used, not auto-loaded:
 require_relative "output/no_plugin_warning"
 
 # Later, at the call site:
-Output::NoPluginWarning.call(agent_type: @agent_config.type)
+Output::NoPluginWarning.call(chosen_agent: @agent_config.type)
 ```
 
 There is no `lib/ralph/output.rb` barrel file. Each class is required individually by the code that needs it.
@@ -77,8 +77,8 @@ There is no `lib/ralph/output.rb` barrel file. Each class is required individual
 module Ralph
   module Output
     class NoPluginWarning
-      def self.call(agent_type:)
-        case agent_type
+      def self.call(chosen_agent:)
+        case chosen_agent
         when :claude_code
           warn "Warning: --no-plugins has no effect with Claude Code agent"
         when :codex
@@ -92,9 +92,9 @@ end
 
 Key things to note:
 
-- The class decides **what** to print based on its arguments (the `case` on `agent_type`).
+- The class decides **what** to print based on its arguments (the `case` on `chosen_agent`).
 - The caller does not need to know the message text — it passes data, and the output class formats it.
-- The caller (`Loop#call` in `lib/ralph/loop.rb`) reads as `Output::NoPluginWarning.call(agent_type: ...)` — intent is clear at the call site.
+- The caller (`Loop#call` in `lib/ralph/loop.rb`) reads as `Output::NoPluginWarning.call(chosen_agent: ...)` — intent is clear at the call site.
 
 ## Formatting Conventions
 

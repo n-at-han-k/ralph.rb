@@ -68,7 +68,7 @@ module Ralph
             prompt: prompt.to_s,
             started_at: Time.now.utc.iso8601,
             model: config.model,
-            agent: config.agent_type
+            agent: config.chosen_agent
           )
         end
 

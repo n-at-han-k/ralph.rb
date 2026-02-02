@@ -78,7 +78,7 @@ module Ralph
                 )
               end
 
-              Agents.resolve(@config.agent_type).then do |agent|
+              Agents.resolve(@config.chosen_agent).then do |agent|
 
                 agent.validate!
 

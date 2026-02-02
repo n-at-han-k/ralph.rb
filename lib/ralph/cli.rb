@@ -2,8 +2,8 @@
 
 module Ralph
   class CLI
-    def initialize(**options)
-      @config = Config.new(**options)
+    def initialize(argv = ARGV)
+      @config = Config.new
 
       @parser = OptionParser.new do |o|
         o.banner = <<~BANNER
@@ -11,7 +11,6 @@ module Ralph
 
           Usage:
             ralph "<prompt>" [options]
-            ralph --prompt-file <path> [options]
 
           Commands:
             --status            Show current Ralph loop status and history
@@ -25,7 +24,7 @@ module Ralph
         BANNER
 
         o.on("--agent AGENT", Agents.valid_agent_names, "AI agent: #{Agents.valid_agent_names.join(', ')} (default: opencode)") do |v|
-          @config.agent_type = v
+          @config.chosen_agent = v
         end
 
         o.on("--min-iterations N", Integer, "Minimum iterations before completion (default: 1)") do |v|
@@ -50,10 +49,6 @@ module Ralph
 
         o.on("--model MODEL", "Model to use (agent-specific)") do |v|
           @config.model = v
-        end
-
-        o.on("-f", "--prompt-file PATH", "--file PATH", "Read prompt content from a file") do |v|
-          @config.prompt_file = v
         end
 
         o.on("--[no-]stream", "Stream agent output in real-time (default: on)") do |v|
@@ -168,7 +163,6 @@ module Ralph
         o.separator '  ralph "Build a REST API for todos"'
         o.separator '  ralph "Fix the auth bug" --max-iterations 10'
         o.separator '  ralph "Add tests" --completion-promise "ALL TESTS PASS" --model openai/gpt-5.1'
-        o.separator '  ralph --prompt-file ./prompt.md --max-iterations 5'
         o.separator '  ralph --status'
         o.separator '  ralph --add-context "Focus on the auth module first"'
         o.separator ""
@@ -183,33 +177,36 @@ module Ralph
         o.separator "To stop manually: Ctrl+C"
         o.separator "Learn more: https://ghuntley.com/ralph/"
       end
+
     end
 
-    def run(argv = ARGV)
-      @parser.parse(argv.dup).then do |remaining_args|
-        PromptTemplate.inject(remaining_args, prompt_file: @config.prompt_file).then do |prompt|
-          if prompt.empty?
-            abort "
-              Error: No prompt provided
-              Usage: ralph 'Your task description' [options]
-              Run 'ralph --help' for more information
-            "
-          else
-            @config.prompt = prompt
-
-            if @config.max_iterations > 0 && @config.min_iterations > @config.max_iterations
-              abort "Error: --min-iterations (#{@config.min_iterations}) cannot be greater than --max-iterations (#{@config.max_iterations})"
-            end
-
-            Ralph::Loop.new(@config).run
-          end
+    def run(argv = ARGV.dup)
+      @user_prompt = @parser.parse(argv).then do |remaining_args|
+        if $stdin.tty?
+          remaining_args.join(" ").strip
+        else
+          [$stdin.read, remaining_args.join(" ")].join("\n").strip
         end
       end
 
-    rescue OptionParser::ParseError => e
-      abort "#{e.message}\nRun 'ralph --help' for available options"
-    rescue PromptTemplate::Error => e
-      abort e.message
+      if @user_prompt.empty?
+        abort "
+          Error: No prompt provided
+          Usage: ralph 'Your task description' [options]
+          Run 'ralph --help' for more information
+        "
+      end
+
+      PromptTemplate.inject(@user_prompt).then do |prompt|
+        @config.prompt = prompt
+
+        if @config.max_iterations > 0 && @config.min_iterations > @config.max_iterations
+          abort "Error: --min-iterations (#{@config.min_iterations}) cannot be greater than --max-iterations (#{@config.max_iterations})"
+        end
+
+        Ralph::Loop.new(@config).run
+      end
+
     rescue StandardError => e
       $stderr.puts "Fatal error: #{e}"
       Storage::State.clear

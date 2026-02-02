@@ -10,12 +10,7 @@ module Ralph
 
         prompt_text = prompt.to_s
         prompt_preview = prompt_text.gsub(/\s+/, ' ')[0, 80] + (prompt_text.length > 80 ? '...' : '')
-        if prompt.source && !prompt.source.empty?
-          puts "Task: #{prompt.source}"
-          puts "Preview: #{prompt_preview}"
-        else
-          puts "Task: #{prompt_preview}"
-        end
+        puts "Task: #{prompt_preview}"
         puts "Completion promise: #{config.completion_promise}"
         if config.tasks_mode
           puts 'Tasks mode: ENABLED'

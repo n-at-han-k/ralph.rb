@@ -4,7 +4,6 @@ Ralph is invoked as a single binary with positional arguments, flags, and subcom
 
 ```
 ralph "<prompt>" [options]
-ralph --prompt-file <path> [options]
 ralph <subcommand> [args]
 ```
 
@@ -15,24 +14,13 @@ The primary argument is a prompt string describing the task for the AI agent.
 | Input method | Syntax | Notes |
 |---|---|---|
 | Inline string | `ralph "Build a REST API"` | One or more positional args joined with spaces |
-| File (explicit) | `ralph --prompt-file path.md` | Aliases: `--file`, `-f` |
-| File (implicit) | `ralph path.md` | Auto-detected when a single positional arg is an existing file |
+| Piped input | `cat prompt.md \| ralph` | Read prompt from stdin via shell pipe |
+| Command substitution | `ralph $(cat prompt.md)` | Expand file contents as arguments |
 
 ### Prompt resolution order
 
-1. If `--prompt-file` / `--file` / `-f` is set, read from that path.
-2. Else if exactly one positional arg is provided and it is an existing file, read from that path.
-3. Else join all positional args with spaces.
-4. If the resolved prompt is empty, exit with an error.
-
-### Prompt file validation
-
-When reading a prompt file (explicit or implicit), the CLI must:
-
-- Verify the path exists (error: `Prompt file not found`)
-- Verify it is a regular file, not a directory (error: `Prompt path is not a file`)
-- Verify it is non-empty after stripping whitespace (error: `Prompt file is empty`)
-- Verify it is readable (error: `Unable to read prompt file`)
+1. Join all positional args with spaces.
+2. If the resolved prompt is empty, exit with an error.
 
 ## Loop Options
 
@@ -96,14 +84,6 @@ Model identifier passed to the selected agent.
 - **Type:** String
 - **Default:** `""` (agent's default)
 - **Agent-specific:** The value is passed directly to the agent CLI (e.g., `--model` for claude-code/codex, `-m` for opencode).
-
-### `--prompt-file PATH` / `--file PATH` / `-f PATH`
-
-Read the prompt from a file instead of inline arguments.
-
-- **Type:** File path
-- **Default:** `""` (unused)
-- **Aliases:** `--prompt-file`, `--file`, `-f`
 
 ### `--[no-]stream`
 
@@ -233,13 +213,11 @@ After parsing, the CLI produces an options hash passed to `Ralph::Loop.run`:
   tasks_mode: Boolean,         # default false
   task_promise: String,        # default "READY_FOR_NEXT_TASK"
   model: String,               # default ""
-  agent_type: String,          # default "opencode"
+  chosen_agent: String,          # default "opencode"
   auto_commit: Boolean,        # default true
   disable_plugins: Boolean,    # default false
   allow_all_permissions: Boolean, # default true
-  prompt_file: String,         # default ""
   stream_output: Boolean,      # default true
   verbose_tools: Boolean,      # default false
-  prompt_source: String        # file path if prompt was read from file, else ""
 }
 ```

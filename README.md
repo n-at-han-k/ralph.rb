@@ -186,7 +186,6 @@ Options:
   --tasks, -t              Enable Tasks Mode for structured task tracking
   --task-promise T         Text that signals task completion (default: READY_FOR_NEXT_TASK)
   --model MODEL            Model to use (agent-specific)
-  --prompt-file, --file, -f  Read prompt content from a file
   --no-stream              Buffer agent output and print at the end
   --verbose-tools          Print every tool line (disable compact tool summary)
   --no-plugins             Disable non-auth OpenCode plugins for this run (opencode only)
@@ -367,7 +366,7 @@ ralph "Your task" --max-iterations 20
 
 ## Recommended PRD Format
 
-Ralph treats prompt files as plain text, so any format works. For best results, use a concise PRD with:
+For best results, use a concise PRD with:
 
 - **Goal**: one sentence summary of the desired outcome
 - **Scope**: what is in/out

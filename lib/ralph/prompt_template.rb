@@ -4,16 +4,14 @@ module Ralph
   class PromptTemplate
     class Error < StandardError; end
 
-    attr_reader :user_prompt, :source
+    attr_reader :user_prompt
 
-    def initialize(user_prompt, source: "")
+    def initialize(user_prompt)
       @user_prompt = user_prompt
-      @source = source
     end
 
     def to_s = @user_prompt
     def empty? = @user_prompt.strip.empty?
-    def from_file? = !@source.empty?
 
     def context_section
       @_context_section ||= Storage::Context.new.then do |context|
@@ -176,42 +174,9 @@ module Ralph
       end
 
       class << self
-        def inject(parts, prompt_file: nil)
-
-          if prompt_file && !prompt_file.empty?
-            from_file(prompt_file)
-
-          elsif parts.length == 1 && File.exist?(parts[0])
-            from_file(parts[0])
-
-          else
-            new(parts.join(" "), source: "")
-          end
-
-        rescue Errno::EACCES
-          raise Error, "Unable to read prompt file: #{path}"
-          new(content, source: path)
+        def inject(user_prompt)
+          new(user_prompt)
         end
-
-        private
-
-          def from_file(path)
-            unless File.exist?(path)
-              raise Error, "Prompt file not found: #{path}"
-            end
-
-            unless File.file?(path)
-              raise Error, "Prompt path is not a file: #{path}"
-            end
-
-            File.read(path).then do |content|
-              if content.strip.empty?
-                raise Error, "Prompt file is empty: #{path}"
-              end
-
-              new(content, source: path)
-            end
-          end
       end
   end
 end
