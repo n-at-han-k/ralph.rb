@@ -103,15 +103,17 @@ module Ralph
       completion_detected = check_completion(combined_output, @config.completion_promise)
       fatal_error = @agent.detect_fatal_error(combined_output)
 
-      status = if fatal_error
-                 :fatal
-               elsif agent_result.exit_code != 0
-                 :failed
-               elsif completion_detected
-                 :completed
-               else
-                 :continuing
-               end
+      status = (
+        if fatal_error
+          :fatal
+        elsif agent_result.exit_code != 0
+          :failed
+        elsif completion_detected
+          :completed
+        else
+          :continuing
+        end
+      )
 
       Result.new(
         status: status,
@@ -124,7 +126,32 @@ module Ralph
         update_struggle_indicators(result)
       end
     rescue StandardError => error
-      handle_iteration_error(error, iteration_start || now_ms)
+      if @config.current_pid
+        begin
+          Process.kill('TERM', @config.current_pid)
+        rescue StandardError
+          # process may have exited
+        end
+        @config.current_pid = nil
+      end
+
+      Output::Iteration::Error.call(@loop, error)
+
+      sleep 2
+
+      Result.new(
+        status: :error,
+        agent_result: nil,
+        duration_ms: now_ms - (iteration_start || now_ms), # this is so fucking wrong
+        files_modified: [],
+        completion_detected: false,
+        errors: [error.message]
+      )
+    end
+
+    # ---------- Warnings and error detection ----------
+
+    def handle_iteration_error(error, iteration_start)
     end
 
     # Returns true when the agent appears to be stuck.
@@ -159,32 +186,6 @@ module Ralph
           @struggle_indicators['repeated_errors'][key] = (@struggle_indicators['repeated_errors'][key] || 0) + 1
         end
       end
-    end
-
-    # ---------- Warnings and error detection ----------
-
-    def handle_iteration_error(error, iteration_start)
-      if @config.current_pid
-        begin
-          Process.kill('TERM', @config.current_pid)
-        rescue StandardError
-          # process may have exited
-        end
-        @config.current_pid = nil
-      end
-
-      Output::Iteration::Error.call(@loop, error)
-
-      sleep 2
-
-      Result.new(
-        status: :error,
-        agent_result: nil,
-        duration_ms: now_ms - iteration_start,
-        files_modified: [],
-        completion_detected: false,
-        errors: [error.message]
-      )
     end
 
     # ---------- Agent execution ----------
