@@ -123,7 +123,6 @@ class TestCLIIntegration < Minitest::Test
       "--completion-promise", "DONE",
       "--model", "gpt-5",
       "--agent", "opencode",
-      "--no-commit",
       "--no-stream"
     ])
     config = @loop_calls.first
@@ -132,7 +131,6 @@ class TestCLIIntegration < Minitest::Test
     assert_equal "DONE", config.completion_promise
     assert_equal "gpt-5", config.model
     assert_equal "opencode", config.agent_type
-    assert_equal false, config.auto_commit
     assert_equal false, config.stream_output
   end
 

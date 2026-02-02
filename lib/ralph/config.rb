@@ -11,7 +11,6 @@ module Ralph
       task_promise:          "READY_FOR_NEXT_TASK",
       model:                 "",
       agent_type:            "opencode",
-      auto_commit:           true,
       disable_plugins:       false,
       allow_all_permissions: true,
       stream_output:         true,

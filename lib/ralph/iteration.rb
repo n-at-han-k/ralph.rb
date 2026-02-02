@@ -84,11 +84,12 @@ module Ralph
 
         combined_output = "#{result.stdout_text}\n#{result.stderr_text}"
 
-        task_completion_detected = if @config.tasks_mode
-                                     check_completion(combined_output, @config.task_promise)
-                                   else
-                                     false
-                                   end
+        task_completion_detected =
+          if @config.tasks_mode
+            check_completion(combined_output, @config.task_promise)
+          else
+            false
+          end
 
         warn_if_struggling(state.iteration)
         detect_plugin_error!(combined_output)

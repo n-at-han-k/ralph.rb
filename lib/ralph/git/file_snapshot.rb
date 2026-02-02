@@ -43,17 +43,15 @@ module Ralph
 
       # Return list of files that changed between this snapshot and a later one
       def modified_since(other)
-        changed = []
+        Array.new.tap do |changed|
+          other.files.each do |file, hash|
+            changed << file if files[file] != hash
+          end
 
-        other.files.each do |file, hash|
-          changed << file if files[file] != hash
+          files.each_key do |file|
+            changed << file unless other.files.key?(file)
+          end
         end
-
-        files.each_key do |file|
-          changed << file unless other.files.key?(file)
-        end
-
-        changed
       end
     end
   end

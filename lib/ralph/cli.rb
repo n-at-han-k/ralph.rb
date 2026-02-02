@@ -74,10 +74,6 @@ module Ralph
           @config.disable_plugins = true
         end
 
-        o.on("--[no-]commit", "Auto-commit after each iteration (default: on)") do |v|
-          @config.auto_commit = v
-        end
-
         o.on("--[no-]allow-all", "Auto-approve all tool permissions (default: on)") do |v|
           @config.allow_all_permissions = v
         end

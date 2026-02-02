@@ -18,7 +18,9 @@ module Ralph
           )
           exit 1
         else
-          @agent_config = resolve_agent!(@config.agent_type)
+          @agent_config = Agents.resolve(@config.agent_type).tap do |resolved_agent_config|
+            resolved_agent_config.validate!
+          end
 
           # Struggle indicators are shared across iterations
           @struggle_indicators = { 'repeated_errors' => {}, 'no_progress_iterations' => 0, 'short_iterations' => 0 }
@@ -33,18 +35,18 @@ module Ralph
 
           if @config.tasks_mode && !File.exist?(Storage::Tasks.tasks_path)
             FileUtils.mkdir_p(Storage::State.dir)
-            File.write(Storage::Tasks.tasks_path,
-                       "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n")
+
+            File.write(
+              Storage::Tasks.tasks_path,
+              "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n"
+            )
+
             Output::TasksFileCreated.call(path: Storage::Tasks.tasks_path)
           end
 
           @history = Storage::History.new
 
-          Output::ConfigSummary.call(
-            config: @config,
-            agent_config: @agent_config,
-            prompt: @prompt
-          )
+          Output::ConfigSummary.call(config: @config, agent_config: @agent_config, prompt: @prompt)
 
           setup_signal_handler
 
@@ -65,13 +67,14 @@ module Ralph
           # wonder came from. It's MIT lisenced now, thought.
 
           loop do
-            if @config.stopping or max_iterations_reached?
+            if @config.stopping
+              break
+            elsif max_iterations_reached?
+              Output::MaxIterationsReached.call(config: @config, total_duration_ms: @history.total_duration_ms)
+              Storage::State.clear
               break
             else
-              Output::IterationHeader.call(
-                config: @config,
-                iteration: @state.iteration
-              )
+              Output::IterationHeader.call(config: @config, iteration: @state.iteration)
 
               Iteration.new(self).run.then do |outcome|
                 if outcome&.complete?
@@ -86,8 +89,10 @@ module Ralph
                   break
                 else
                   if outcome
-                    consume_context(outcome.context_at_start)
-                    auto_commit_changes if @config.auto_commit
+                    if outcome.context_at_start.present?
+                      Output::ContextConsumed.call
+                      outcome.context_at_start.clear
+                    end
                   end
 
                   @state.iteration += 1
@@ -104,64 +109,31 @@ module Ralph
 
     private
 
-    def resolve_agent!(agent_type)
-      Agents.resolve(agent_type).tap do |resolved_agent_config|
-        resolved_agent_config.validate!
-      end
-    end
-
-    def setup_signal_handler
-      Signal.trap('INT') do
-        if @config.stopping
-          warn "\nForce stopping..."
-          exit 1
-        end
-        @config.stopping = true
-        warn "\nGracefully stopping Ralph loop..."
-        if @config.current_pid
-          begin
-            Process.kill('TERM', @config.current_pid)
-          rescue StandardError
-            # process may have exited
+      def setup_signal_handler
+        Signal.trap('INT') do
+          if @config.stopping
+            warn "\nForce stopping..."
+            exit 1
           end
+          @config.stopping = true
+          warn "\nGracefully stopping Ralph loop..."
+          if @config.current_pid
+            begin
+              Process.kill('TERM', @config.current_pid)
+            rescue StandardError
+              # process may have exited
+            end
+          end
+          Storage::State.clear
+          warn 'Loop cancelled.'
+          exit 0
         end
-        Storage::State.clear
-        warn 'Loop cancelled.'
-        exit 0
       end
-    end
 
-    def max_iterations_reached?
-      if @config.max_iterations > 0 && @state.iteration > @config.max_iterations
-        Output::MaxIterationsReached.call(
-          config: @config,
-          total_duration_ms: @history.total_duration_ms
-        )
-
-        Storage::State.clear
-        true
-      else
-        false
+      def max_iterations_reached?
+        @config.max_iterations > 0 && @state.iteration > @config.max_iterations
       end
-    end
 
-    def consume_context(context_at_start)
-      if context_at_start.present?
-        Output::ContextConsumed.call
-        context_at_start.clear
-      end
-    end
 
-    def auto_commit_changes
-      status = `git status --porcelain 2>/dev/null`.strip
-      unless status.empty?
-        system('git', 'add', '-A')
-        system('git', 'commit', '-m', "Ralph iteration #{@state.iteration}: work in progress",
-               %i[out err] => File::NULL)
-        Output::AutoCommitNotice.call(iteration: @state.iteration)
-      end
-    rescue StandardError
-      # git commit failed, ok
-    end
   end
 end
