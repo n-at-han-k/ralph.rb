@@ -69,11 +69,12 @@ module Ralph
         else
           Output::Iteration::Header.call(self)
 
-          iteration = Iteration.new(self)
-          result = iteration.run
-
-          record_history(result, iteration)
-          process_result(result, iteration) || break
+          Iteration.new(self).then do |iteration|
+            iteration.run.then do |result|
+              record_history(result, iteration)
+              process_result(result, iteration) || break
+            end
+          end
 
           @state.iteration += 1
           @state.save
