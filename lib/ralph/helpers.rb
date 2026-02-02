@@ -39,15 +39,17 @@ module Ralph
     end
 
     def format_tool_summary(tool_counts, max_items = 6)
-      return "" if tool_counts.empty?
+      if tool_counts.empty?
+        ""
+      else
+        entries = tool_counts.sort_by { |_, v| -v }
+        shown = entries.first(max_items)
+        remaining = entries.length - shown.length
 
-      entries = tool_counts.sort_by { |_, v| -v }
-      shown = entries.first(max_items)
-      remaining = entries.length - shown.length
-
-      parts = shown.map { |name, count| "#{name} #{count}" }
-      parts << "+#{remaining} more" if remaining > 0
-      parts.join(" • ")
+        shown.map { |name, count| "#{name} #{count}" }
+          .then{ |parts| parts << "+#{remaining} more" if remaining > 0 }
+          .then{ |parts| parts.join(" • ") }
+      end
     end
 
     def check_completion(output, promise)

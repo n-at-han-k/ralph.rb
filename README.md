@@ -80,25 +80,34 @@ Switch between AI coding agents without changing your workflow:
 - **Codex** (`--agent codex`) — OpenAI's code-specialized model
 - **OpenCode** (`--agent opencode`) — Open-source default option
 
-## Key Features
+## Why Ralph? (Not Just a `while true` Loop)
 
-- **Multi-Agent Support** — Use Claude Code, Codex, or OpenCode with the same workflow
-- **Self-Correcting Loops** — Agent sees its previous work and fixes its own mistakes
-- **Autonomous Execution** — Set it running and come back to finished code
-- **Task Tracking** — Built-in task management with `--tasks` mode
-- **Live Monitoring** — Check progress with `--status` from another terminal
-- **Mid-Loop Hints** — Inject guidance with `--add-context` without stopping
+At its core, the Ralph technique is a `while true` loop that calls an AI coding agent. So what does this tool actually add? A bare loop has no way to stop, no observability, no error recovery, no task management, and no way to intervene mid-run. Ralph wraps the loop with termination logic, state management, struggle detection, live monitoring, and mid-flight steering — turning a dumb retry loop into a supervised autonomous agent runner.
 
-## Why Use an Agentic Loop?
-
-| Benefit | How it works |
-|---------|--------------|
-| **Self-Correction** | AI sees test failures from previous runs, fixes them |
-| **Persistence** | Walk away, come back to completed work |
-| **Iteration** | Complex tasks broken into incremental progress |
-| **Automation** | No babysitting—loop handles retries |
-| **Observability** | Monitor progress with `--status`, see history and struggle indicators |
-| **Mid-Loop Guidance** | Inject hints with `--add-context` without stopping the loop |
+| Feature | Problem It Solves |
+|---------|-------------------|
+| **Completion Promise Detection** | A bare loop never knows when to stop. Ralph detects `<promise>COMPLETE</promise>` in agent output to terminate cleanly. |
+| **Min/Max Iteration Bounds** | No safety net on cost or runaway loops. `--max-iterations` caps runs; `--min-iterations` prevents premature completion. |
+| **Task Decomposition Mode** | Large projects overwhelm a single prompt. Ralph breaks work into a `.ralph/ralph-tasks.md` file, feeds one task at a time, and advances automatically. |
+| **Task Management CLI** | Editing a markdown task file by hand is tedious. `--list-tasks`, `--add-task`, `--remove-task` manage it from the terminal. |
+| **Mid-Loop Context Injection** | You see the agent going the wrong way but don't want to kill the loop. `--add-context "hint"` from another terminal steers the next iteration. |
+| **Status Dashboard** (`--status`) | No visibility into a running loop. Shows iteration count, elapsed time, task progress, recent history, and struggle indicators from another terminal. |
+| **Struggle Detection** | Agent silently spins doing nothing useful. Ralph tracks no-file-change streaks, short iterations (<30s), and repeated errors, then warns you. |
+| **Git-Based File Change Tracking** | Can't tell if the agent actually did anything. Git snapshots before/after each iteration detect modifications. |
+| **Streaming + Compact Tool Summaries** | Raw agent output is extremely noisy with tool invocations. Ralph suppresses tool lines and prints periodic compact summaries (e.g., `Bash 5 . Edit 3 . Read 2`). |
+| **Heartbeat Indicator** | Long silent periods make you think the loop is hung. A background thread prints `working... elapsed X` every 10s. |
+| **Multi-Agent Support** | Locked into one agent. Ralph supports OpenCode, Claude Code, and Codex behind a uniform interface. |
+| **Auto-Approve Permissions** | Interactive permission prompts block an unattended loop. `--allow-all` passes the right flags per agent (`--dangerously-skip-permissions`, `--full-auto`, etc.). |
+| **State Persistence** (`.ralph/`) | A killed loop loses all context. Ralph persists session state, iteration history, context, and tasks to disk for recovery and monitoring. |
+| **Iteration History & Metrics** | No record of what happened. Each iteration records duration, tools used, files changed, errors, and exit code. |
+| **Error Extraction** | Errors are buried in pages of output. Ralph scans output for error patterns and surfaces them in history/status. |
+| **Active Loop Guard** | Two loops running simultaneously corrupt state. Ralph detects an existing active session and refuses to start a second. |
+| **Graceful Signal Handling** | Ctrl+C leaves orphaned agent processes and corrupt state. Ralph sends TERM to the subprocess and cleans up state files. |
+| **Nonzero Exit Resilience** | Agent crashes kill the loop. Ralph logs a warning and continues to the next iteration instead. |
+| **Agent Binary Validation** | Cryptic errors if the agent CLI isn't installed. Ralph checks `$PATH` upfront and fails with a clear message. |
+| **Plugin Filtering** | OpenCode's legacy `ralph-wiggum` plugin causes fatal errors. `--no-plugins` filters it out. |
+| **Iteration-Aware Prompt Building** | Each iteration needs structured context (iteration number, task focus, completion instructions). Ralph constructs iteration-aware prompts automatically. |
+| **Model Selection** | Each agent has different `--model` flag syntax. Ralph normalizes `--model MODEL` across all agents. |
 
 ## Installation
 

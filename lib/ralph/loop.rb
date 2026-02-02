@@ -16,10 +16,14 @@ module Ralph
     def initialize(config)
       @config = config
 
-      @struggle_indicators = { 'repeated_errors' => {}, 'no_progress_iterations' => 0, 'short_iterations' => 0 }
+      @struggle_indicators = {
+        repeated_errors: {},
+        no_progress_iterations: 0,
+        short_iterations: 0
+      }
 
-      @prompt = @config.prompt
-      @state = Storage::State.from_config(@config, prompt: @prompt).tap(&:save)
+      @prompt  = @config.prompt
+      @state   = Storage::State.from_config(@config, prompt: @prompt).tap(&:save)
       @history = Storage::History.new
     end
 
