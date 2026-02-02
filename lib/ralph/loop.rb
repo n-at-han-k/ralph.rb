@@ -71,7 +71,6 @@ module Ralph
 
           Iteration.new(self).then do |iteration|
             iteration.run.then do |result|
-              record_history(result, iteration)
               process_result(result, iteration) || break
             end
           end
@@ -86,23 +85,6 @@ module Ralph
 
     private
 
-      def record_history(result, iteration)
-        if result.error?
-          @history.record_error(
-            state_iteration: @state.iteration,
-            iteration_start: iteration.iteration_start,
-            error: result.errors.first || "Unknown error"
-          )
-        else
-          @history.record(
-            state_iteration: @state.iteration,
-            iteration_start: iteration.iteration_start,
-            result: result,
-            struggle_indicators: iteration.struggle_indicators
-          )
-        end
-      end
-
       def process_result(result, iteration)
         unless result.error?
           Output::Iteration::Summary.call(self, result)
@@ -110,11 +92,23 @@ module Ralph
 
         case result.status
         when :fatal
+          @history.record(
+            state_iteration: @state.iteration,
+            iteration_start: iteration.iteration_start,
+            result: result,
+            struggle_indicators: iteration.struggle_indicators
+          )
           Output::PluginError.call
           @state.clear
           exit 1
 
         when :failed
+          @history.record(
+            state_iteration: @state.iteration,
+            iteration_start: iteration.iteration_start,
+            result: result,
+            struggle_indicators: iteration.struggle_indicators
+          )
           Output::NonzeroExitWarning.call(self, result)
 
           if @config.tasks_mode
@@ -124,6 +118,13 @@ module Ralph
           end
 
         when :completed
+          @history.record(
+            state_iteration: @state.iteration,
+            iteration_start: iteration.iteration_start,
+            result: result,
+            struggle_indicators: iteration.struggle_indicators
+          )
+
           if @state.iteration >= @config.min_iterations
             Output::CompletionDetected.call(self)
             @state.clear
@@ -132,6 +133,13 @@ module Ralph
           end
 
         when :continuing
+          @history.record(
+            state_iteration: @state.iteration,
+            iteration_start: iteration.iteration_start,
+            result: result,
+            struggle_indicators: iteration.struggle_indicators
+          )
+
           if @state.iteration > 2 && iteration.struggling?
             Output::StruggleWarning.call(self)
           end
@@ -148,7 +156,11 @@ module Ralph
           end
 
         when :error
-          # Already handled inside Iteration#handle_iteration_error
+          @history.record_error(
+            state_iteration: @state.iteration,
+            iteration_start: iteration.iteration_start,
+            error: result.errors.first || "Unknown error"
+          )
         end
 
         result.status != :completed || @state.iteration < @config.min_iterations

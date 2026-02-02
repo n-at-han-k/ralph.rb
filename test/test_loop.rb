@@ -131,18 +131,23 @@ class TestLoopBugs < Minitest::Test
   end
 
   # -----------------------------------------------------------------------
-  # Bug 3 FIX: iteration is now assigned as a local variable before .run.
+  # Bug 3 FIX: history is recorded by the Loop, not the Iteration.
   # -----------------------------------------------------------------------
-  def test_iteration_variable_is_assigned_in_loop_run
+  def test_history_is_recorded_by_loop
     source = File.read(File.expand_path("../lib/ralph/loop.rb", __dir__))
-    run_method = source[/def run\b.*?(?=\n\s{4}(?:def |private\b|end\b\s*\z))/m]
 
-    # iteration is now assigned as a local variable
-    assert_match(/^\s*iteration\s*=\s*Iteration\.new/, run_method,
-      "iteration should be assigned as a local variable")
+    # Loop records history via @history.record and @history.record_error
+    assert_match(/@history\.record\(/, source,
+      "Loop should call @history.record")
+    assert_match(/@history\.record_error\(/, source,
+      "Loop should call @history.record_error for error results")
+
+    # Iteration does NOT reference @history
+    iteration_source = File.read(File.expand_path("../lib/ralph/iteration.rb", __dir__))
+    refute_match(/@history/, iteration_source,
+      "Iteration should not reference @history")
 
     # iteration.struggling? and iteration.context_at_start are reachable
-    # (via process_result, which is called from run)
     assert_match(/iteration\.struggling\?/, source,
       "iteration.struggling? should still be referenced")
     assert_match(/iteration\.context_at_start/, source,
