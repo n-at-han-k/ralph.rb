@@ -67,21 +67,58 @@ module Ralph
           Storage::State.clear
           break
         else
-          Iteration.new(self).run.then do |outcome|
-            if outcome&.complete?
-              Output::CompletionDetected.call(self)
-              Storage::State.clear
-              Storage::History.clear_history
-              Storage::Context.new.clear
-              break
-            else
-              if outcome
-                if outcome.context_at_start.present?
-                  Output::ContextConsumed.call
-                  outcome.context_at_start.clear
+          Output::Iteration::Header.call(@loop)
+
+          iteration = Iteration.new(self)
+          iteration.run.then do |result|
+            if result
+              Output::Iteration::Summary.call(self, result)
+
+              combined_output = result.combined_output
+
+              if @state.iteration > 2 && iteration.struggling?
+                Output::StruggleWarning.call(
+                  no_progress_iterations: @struggle_indicators['no_progress_iterations'],
+                  short_iterations: @struggle_indicators['short_iterations']
+                )
+              end
+
+              @agent.detect_fatal_error(combined_output).then do |fatal_error|
+                if fatal_error
+                  Output::PluginError.call
+                  Storage::State.clear
+                  exit 1
                 end
               end
 
+              unless result.exit_code == 0
+                Output::NonzeroExitWarning.call(agent: @agent, exit_code: result.exit_code)
+              end
+
+              if @config.tasks_mode && !result.completion_detected
+                if check_completion(combined_output, @config.task_promise)
+                  Output::TaskCompletion.call(config: @config, next_iteration: @state.iteration + 1)
+                end
+              end
+
+              if !result.completion_detected && @state.iteration >= @config.min_iterations
+                Output::CompletionDetected.call(self)
+                Storage::State.clear
+                Storage::History.clear_history
+                Storage::Context.new.clear
+                break
+              else
+                if iteration.context_at_start.present?
+                  Output::ContextConsumed.call
+                  iteration.context_at_start.clear
+                end
+
+                @state.iteration += 1
+                @state.save
+
+                sleep 1
+              end
+            else
               @state.iteration += 1
               @state.save
 

@@ -8,7 +8,11 @@ module Ralph
       include ::Ralph::Helpers
 
       # Result of executing an agent process
-      ExecutionResult = Struct.new(:stdout_text, :stderr_text, :tool_counts, :exit_code, keyword_init: true)
+      ExecutionResult = Struct.new(:stdout_text, :stderr_text, :tool_counts, :exit_code, keyword_init: true) do
+        def combined_output
+          "#{stdout_text}\n#{stderr_text}"
+        end
+      end
 
       def type
         raise NotImplementedError
@@ -56,6 +60,10 @@ module Ralph
         else
           execute_captured(environment, full_command)
         end
+      rescue StandardError => agent_error
+        Agents::Base::ExecutionResult.new(
+          stdout_text: "", stderr_text: agent_error.to_s, tool_counts: {}, exit_code: -1
+        )
       end
 
       # Collects tool usage counts from output text.

@@ -117,36 +117,36 @@ module Ralph
         end
 
         begin
-          tasks_content = File.read(tasks_path)
-          tasks = Tasks.parse(tasks_content)
-          current_task = tasks.current
-          next_task = tasks.next
+           tasks_content = File.read(tasks_path)
+           tasks = Tasks.parse(tasks_content)
+           current_task = tasks.current
+           next_task = tasks.next
 
-          task_instructions =
-            if current_task
-              <<~INST
+           task_instructions =
+             if current_task
+               <<~INST
                 🔄 CURRENT TASK: "#{current_task.text}"
                    Focus on completing this specific task.
                    When done: Mark as [x] in .ralph/ralph-tasks.md and output <promise>#{state.task_promise}</promise>
               INST
-            elsif next_task
-              <<~INST
+             elsif next_task
+               <<~INST
                 📍 NEXT TASK: "#{next_task.text}"
                    Mark as [/] in .ralph/ralph-tasks.md before starting.
                    When done: Mark as [x] and output <promise>#{state.task_promise}</promise>
               INST
-            elsif tasks.all_complete?
-              <<~INST
+             elsif tasks.all_complete?
+               <<~INST
                 ✅ ALL TASKS COMPLETE!
                    Output <promise>#{state.completion_promise}</promise> to finish.
               INST
-            else
-              <<~INST
+             else
+               <<~INST
                 📋 No tasks found. Add tasks to .ralph/ralph-tasks.md or use `ralph --add-task`
               INST
-            end
+             end
 
-          <<~SECTION
+           <<~SECTION
 
             ## TASKS MODE: Working through task list
 
@@ -165,8 +165,8 @@ module Ralph
 
             ---
           SECTION
-        rescue StandardError
-          <<~SECTION
+         rescue StandardError
+           <<~SECTION
 
             ## TASKS MODE: Error reading tasks file
 
@@ -204,10 +204,12 @@ module Ralph
               raise Error, "Prompt path is not a file: #{path}"
             end
 
-            File.read(path).tap do |content|
+            File.read(path).then do |content|
               if content.strip.empty?
                 raise Error, "Prompt file is empty: #{path}"
               end
+
+              new(content, source: path)
             end
           end
       end
