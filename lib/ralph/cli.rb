@@ -197,8 +197,8 @@ module Ralph
         "
       end
 
+      tasks   = Storage::Tasks.new
       context = Storage::Context.new
-      tasks = Storage::Tasks.new
 
       PromptTemplate.inject(@user_prompt, context: context, tasks: tasks).then do |prompt|
         @config.prompt = prompt
@@ -207,10 +207,10 @@ module Ralph
           abort "Error: --min-iterations (#{@config.min_iterations}) cannot be greater than --max-iterations (#{@config.max_iterations})"
         end
 
-        state = Storage::State.from_config(@config, prompt: prompt)
+        state   = Storage::State.from_config(@config, prompt: prompt)
         history = Storage::History.new
 
-        Ralph::Loop.new(@config, state: state, history: history, context: context, tasks: tasks).run
+        Ralph::Loop.new(@config, state, history, context, tasks).run
       end
 
     rescue StandardError => e

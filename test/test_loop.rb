@@ -79,7 +79,7 @@ class TestLoopBugs < Minitest::Test
     refute File.exist?(Ralph::Storage::State.path),
       "Precondition: no state file before Loop.new"
 
-    loop_instance = Ralph::Loop.new(config, state: state, history: history, context: context, tasks: tasks)
+    loop_instance = Ralph::Loop.new(config, state, history, context, tasks)
 
     # After initialize, the state file exists (because initialize saves it)
     assert File.exist?(Ralph::Storage::State.path),
@@ -102,7 +102,7 @@ class TestLoopBugs < Minitest::Test
     context = Ralph::Storage::Context.new
     tasks = Ralph::Storage::Tasks.new
 
-    loop_instance = Ralph::Loop.new(config, state: new_state, history: history, context: context, tasks: tasks)
+    loop_instance = Ralph::Loop.new(config, new_state, history, context, tasks)
 
     assert loop_instance.existing_state&.active,
       "existing_state should detect the previously saved active state"
@@ -118,7 +118,7 @@ class TestLoopBugs < Minitest::Test
     context = Ralph::Storage::Context.new
     tasks = Ralph::Storage::Tasks.new
 
-    loop_instance = Ralph::Loop.new(config, state: state, history: history, context: context, tasks: tasks)
+    loop_instance = Ralph::Loop.new(config, state, history, context, tasks)
 
     # Verify the source no longer references @loop in the Header call
     source = File.read(File.expand_path("../lib/ralph/loop.rb", __dir__))
@@ -142,9 +142,10 @@ class TestLoopBugs < Minitest::Test
       "iteration should be assigned as a local variable")
 
     # iteration.struggling? and iteration.context_at_start are reachable
-    assert_match(/iteration\.struggling\?/, run_method,
+    # (via process_result, which is called from run)
+    assert_match(/iteration\.struggling\?/, source,
       "iteration.struggling? should still be referenced")
-    assert_match(/iteration\.context_at_start/, run_method,
+    assert_match(/iteration\.context_at_start/, source,
       "iteration.context_at_start should still be referenced")
   end
 end

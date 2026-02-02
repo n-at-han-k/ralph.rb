@@ -13,7 +13,7 @@ module Ralph
 
     attr_reader :config, :agent, :state, :history, :context, :tasks, :prompt, :struggle_indicators
 
-    def initialize(config, state:, history:, context:, tasks:)
+    def initialize(config, state, history, context, tasks)
       @config = config
       @state = state
       @history = history
@@ -70,62 +70,88 @@ module Ralph
           Output::Iteration::Header.call(self)
 
           iteration = Iteration.new(self)
-          iteration.run.then do |result|
-            Output::Iteration::Summary.call(self, result) unless result.error?
+          result = iteration.run
 
-            case result.status
-            when :fatal
-              Output::PluginError.call
-              @state.clear
-              exit 1
-            when :failed
-              Output::NonzeroExitWarning.call(agent: @config.chosen_agent, exit_code: result.exit_code)
+          record_history(result, iteration)
+          process_result(result, iteration) || break
 
-              if @config.tasks_mode
-                if check_completion(result.combined_output, @config.task_promise)
-                  Output::TaskCompletion.call(config: @config, next_iteration: @state.iteration + 1)
-                end
-              end
-            when :completed
-              if @state.iteration >= @config.min_iterations
-                Output::CompletionDetected.call(self)
-                @state.clear
-                Storage::History.clear_history
-                @context.clear
-                break
-              end
-            when :continuing
-              if @state.iteration > 2 && iteration.struggling?
-                Output::StruggleWarning.call(
-                  no_progress_iterations: @struggle_indicators['no_progress_iterations'],
-                  short_iterations: @struggle_indicators['short_iterations']
-                )
-              end
+          @state.iteration += 1
+          @state.save
 
-              if @config.tasks_mode
-                if check_completion(result.combined_output, @config.task_promise)
-                  Output::TaskCompletion.call(config: @config, next_iteration: @state.iteration + 1)
-                end
-              end
-
-              if iteration.context_at_start.present?
-                Output::ContextConsumed.call
-                iteration.context_at_start.clear
-              end
-            when :error
-              # Already handled inside Iteration#handle_iteration_error
-            end
-
-            @state.iteration += 1
-            @state.save
-
-            sleep 1
-          end
+          sleep 1
         end
       end
     end
 
     private
+
+      def record_history(result, iteration)
+        if result.error?
+          @history.record_error(
+            state_iteration: @state.iteration,
+            iteration_start: iteration.iteration_start,
+            error: result.errors.first || "Unknown error"
+          )
+        else
+          @history.record(
+            state_iteration: @state.iteration,
+            iteration_start: iteration.iteration_start,
+            result: result,
+            struggle_indicators: iteration.struggle_indicators
+          )
+        end
+      end
+
+      def process_result(result, iteration)
+        unless result.error?
+          Output::Iteration::Summary.call(self, result)
+        end
+
+        case result.status
+        when :fatal
+          Output::PluginError.call
+          @state.clear
+          exit 1
+
+        when :failed
+          Output::NonzeroExitWarning.call(self, result)
+
+          if @config.tasks_mode
+            if check_completion(result.combined_output, @config.task_promise)
+              Output::TaskCompletion.call(self)
+            end
+          end
+
+        when :completed
+          if @state.iteration >= @config.min_iterations
+            Output::CompletionDetected.call(self)
+            @state.clear
+            Storage::History.clear_history
+            @context.clear
+          end
+
+        when :continuing
+          if @state.iteration > 2 && iteration.struggling?
+            Output::StruggleWarning.call(self)
+          end
+
+          if @config.tasks_mode
+            if check_completion(result.combined_output, @config.task_promise)
+              Output::TaskCompletion.call(self)
+            end
+          end
+
+          if iteration.context_at_start.present?
+            Output::ContextConsumed.call
+            iteration.context_at_start.clear
+          end
+
+        when :error
+          # Already handled inside Iteration#handle_iteration_error
+        end
+
+        result.status != :completed || @state.iteration < @config.min_iterations
+      end
 
       def max_iterations_reached?
         @config.max_iterations > 0 && @state.iteration > @config.max_iterations

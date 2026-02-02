@@ -97,8 +97,16 @@ module Ralph
           stdin, stdout, stderr, wait_thread = Open3.popen3(environment, *full_command)
           stdin.close
 
-          stdout_reader = stream_reader_thread(stdout, stdout_text, mutex, tool_counts, on_line, false)
-          stderr_reader = stream_reader_thread(stderr, stderr_text, mutex, tool_counts, on_line, true)
+          stdout_reader = Threads::StreamReader.new(
+            io: stdout, text_buffer: stdout_text, mutex: mutex,
+            tool_counts: tool_counts, on_line: on_line, is_error: false,
+            tool_parser: method(:parse_tool_output)
+          )
+          stderr_reader = Threads::StreamReader.new(
+            io: stderr, text_buffer: stderr_text, mutex: mutex,
+            tool_counts: tool_counts, on_line: on_line, is_error: true,
+            tool_parser: method(:parse_tool_output)
+          )
 
           stdout_reader.join
           stderr_reader.join
@@ -122,29 +130,6 @@ module Ralph
             tool_counts: tool_counts,
             exit_code: status.exitstatus || 1
           )
-        end
-
-        def stream_reader_thread(io, text_buffer, mutex, tool_counts, on_line, is_error)
-          Thread.new do
-            buffer = +""
-            while (chunk = io.read(4096))
-              text_buffer << chunk
-              buffer << chunk
-              while (index = buffer.index("\n"))
-                line = buffer.slice!(0, index + 1).chomp
-                tool = parse_tool_output(line)
-                mutex.synchronize { tool_counts[tool] += 1 } if tool
-                on_line.call(line, is_error, tool) if on_line
-              end
-            end
-            unless buffer.empty?
-              tool = parse_tool_output(buffer)
-              mutex.synchronize { tool_counts[tool] += 1 } if tool
-              on_line.call(buffer, is_error, tool) if on_line
-            end
-          rescue IOError
-            # stream closed
-          end
         end
     end
   end

@@ -44,7 +44,6 @@ module Ralph
       @config = @loop.config
       @agent = @loop.agent
       @state = @loop.state
-      @history = @loop.history
       @struggle_indicators = @loop.struggle_indicators
 
       # Streaming configuration
@@ -54,8 +53,7 @@ module Ralph
 
       @stream_tool_counts = Hash.new(0)
       @mutex = Mutex.new
-      @last_printed_at = now_ms
-      @last_activity_at = now_ms
+      @timing = { last_printed_at: now_ms, last_activity_at: now_ms }
       @last_tool_summary_at = 0
 
       @iteration_start = now_ms
@@ -67,7 +65,12 @@ module Ralph
       snapshot_before = Git::FileSnapshot.capture
 
       if @config.stream_output
-        heartbeat = heartbeat_thread(iteration_start)
+        heartbeat = Threads::Heartbeat.new(
+          iteration_start: iteration_start,
+          heartbeat_interval_ms: @heartbeat_interval_ms,
+          timing: @timing,
+          mutex: @mutex
+        )
       end
 
       @agent.execute(
@@ -80,7 +83,7 @@ module Ralph
 
       ).then do |agent_result|
 
-        heartbeat&.kill
+        heartbeat&.stop
 
         if @config.stream_output
           @mutex.synchronize { maybe_print_tool_summary(force: true) }
@@ -118,15 +121,7 @@ module Ralph
         completion_detected: completion_detected,
         errors: @agent.extract_errors(combined_output)
       ).tap do |result|
-
         update_struggle_indicators(result)
-
-        @history.record(
-          state_iteration: @state.iteration,
-          iteration_start: iteration_start,
-          result: result,
-          struggle_indicators: @struggle_indicators
-        )
       end
     rescue StandardError => error
       handle_iteration_error(error, iteration_start || now_ms)
@@ -180,12 +175,6 @@ module Ralph
 
       Output::Iteration::Error.call(@loop, error)
 
-      @history.record_error(
-        state_iteration: @state.iteration,
-        iteration_start: iteration_start,
-        error: error
-      )
-
       sleep 2
 
       Result.new(
@@ -207,7 +196,7 @@ module Ralph
           format_tool_summary(@stream_tool_counts).then do |summary|
             unless summary.empty?
               puts "| Tools    #{summary}"
-              @last_printed_at = now_ms
+              @timing[:last_printed_at] = now_ms
               @last_tool_summary_at = now_ms
             end
           end
@@ -216,7 +205,7 @@ module Ralph
     end
 
     def handle_line(line, is_error, tool)
-      @mutex.synchronize { @last_activity_at = now_ms }
+      @mutex.synchronize { @timing[:last_activity_at] = now_ms }
 
       @mutex.synchronize { @stream_tool_counts[tool] += 1 } if tool
 
@@ -230,25 +219,7 @@ module Ralph
         else
           puts line
         end
-        @mutex.synchronize { @last_printed_at = now_ms }
-      end
-    end
-
-    def heartbeat_thread(iteration_start)
-      Thread.new do
-        loop do
-          sleep(@heartbeat_interval_ms / 1000.0)
-          now_ms.then do |now|
-            if now - @mutex.synchronize { @last_printed_at } >= @heartbeat_interval_ms
-              @mutex.synchronize do
-                puts "⏳ working... elapsed #{format_duration(now - iteration_start)} · last activity #{format_duration(now - @last_activity_at)} ago"
-                @last_printed_at = now_ms
-              end
-            end
-          end
-        end
-      rescue StandardError
-        # thread cleanup
+        @mutex.synchronize { @timing[:last_printed_at] = now_ms }
       end
     end
   end

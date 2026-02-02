@@ -3,8 +3,8 @@
 module Ralph
   module Output
     class NonzeroExitWarning
-      def self.call(agent:, exit_code:)
-        warn "\n⚠️  #{agent.config_name} exited with code #{exit_code}. Continuing to next iteration."
+      def self.call(loop_context, result)
+        warn "\n⚠️  #{loop_context.config.chosen_agent.config_name} exited with code #{result.exit_code}. Continuing to next iteration."
       end
     end
   end
