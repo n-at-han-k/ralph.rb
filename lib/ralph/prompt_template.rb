@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
 module Ralph
-  class Prompt
+  class PromptTemplate
     class Error < StandardError; end
 
-    attr_reader :text, :source
+    attr_reader :user_prompt, :source
 
-    def initialize(text, source: "")
-      @text = text
+    def initialize(user_prompt, source: "")
+      @user_prompt = user_prompt
       @source = source
     end
 
-    def to_s = @text
-    def empty? = @text.strip.empty?
+    def to_s = @user_prompt
+    def empty? = @user_prompt.strip.empty?
     def from_file? = !@source.empty?
 
     def context_section
@@ -31,7 +31,7 @@ module Ralph
       end
     end
 
-    def task_mode_prompt
+    def task_mode_prompt(state)
       tasks_section = build_tasks_section(state)
       <<~PROMPT.strip
         # Ralph Wiggum Loop - Iteration #{state.iteration}
@@ -40,7 +40,7 @@ module Ralph
         #{context_section}#{tasks_section}
         ## Your Main Goal
 
-        #{@text}
+        #{@user_prompt}
 
         ## Critical Rules
 
@@ -59,7 +59,7 @@ module Ralph
       PROMPT
     end
 
-    def non_task_mode_prompt
+    def non_task_mode_prompt(state)
       <<~PROMPT.strip
         # Ralph Wiggum Loop - Iteration #{state.iteration}
 
@@ -67,7 +67,7 @@ module Ralph
         #{context_section}
         ## Your Task
 
-        #{@text}
+        #{@user_prompt}
 
         ## Instructions
 
@@ -97,9 +97,9 @@ module Ralph
     # +_agent+ is the agent config (reserved for future use).
     def build_iteration(state, _agent)
       if state.tasks_mode
-        task_mode_prompt
+        task_mode_prompt(state)
       else
-        non_task_mode_prompt
+        non_task_mode_prompt(state)
       end
     end
 
@@ -176,7 +176,7 @@ module Ralph
       end
 
       class << self
-        def from_parts(parts, prompt_file: nil)
+        def inject(parts, prompt_file: nil)
 
           if prompt_file && !prompt_file.empty?
             from_file(prompt_file)

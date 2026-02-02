@@ -3,7 +3,7 @@ module Ralph
     # Single source of truth for config option names and their defaults.
     # Use a lambda for mutable defaults to avoid shared state.
     OPTIONS = {
-      prompt:                -> { Prompt.new("") },
+      prompt:                -> { PromptTemplate.new("") },
       min_iterations:        1,
       max_iterations:        0,
       completion_promise:    "COMPLETE",

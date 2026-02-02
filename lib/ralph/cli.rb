@@ -187,7 +187,7 @@ module Ralph
 
     def run(argv = ARGV)
       @parser.parse(argv.dup).then do |remaining_args|
-        Prompt.from_parts(remaining_args, prompt_file: @config.prompt_file).then do |prompt|
+        PromptTemplate.inject(remaining_args, prompt_file: @config.prompt_file).then do |prompt|
           if prompt.empty?
             abort "
               Error: No prompt provided
@@ -208,7 +208,7 @@ module Ralph
 
     rescue OptionParser::ParseError => e
       abort "#{e.message}\nRun 'ralph --help' for available options"
-    rescue Prompt::Error => e
+    rescue PromptTemplate::Error => e
       abort e.message
     rescue StandardError => e
       $stderr.puts "Fatal error: #{e}"
