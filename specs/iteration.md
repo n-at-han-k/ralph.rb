@@ -21,17 +21,13 @@ require_relative "state"
 ### Constructor
 
 ```ruby
-def initialize(agent_config:, model:, options:)
+def initialize(loop)
 ```
 
 **Parameters:**
-- `agent_config` - `Ralph::Agents::Base` instance providing command, build_args, build_env, etc. (see [agents.md](./agents.md))
-- `model` - String representing the model identifier to pass to the agent
-- `options` - Hash containing execution options:
-  - `allow_all_permissions` - Boolean for auto-approving tool permissions
-  - `disable_plugins` - Boolean for filtering plugins (opencode only)
-  - `stream_output` - Boolean for streaming vs buffered output
-  - `verbose_tools` - Boolean for detailed tool output vs summaries
+- `loop` - `Ralph::Loop` instance. Provides access to:
+  - `loop.config` - `Ralph::Config` instance with all execution options (model, stream_output, verbose_tools, allow_all_permissions, disable_plugins, completion_promise, etc.)
+  - `loop.agent_config` - `Ralph::Agents::Base` instance providing command, build_args, build_env, etc. (see [agents.md](./agents.md))
 
 ### Main Method
 
@@ -113,17 +109,8 @@ It does NOT:
 ## Usage Example
 
 ```ruby
-# In Loop class
-iteration = Iteration.new(
-  agent_config: @agent_config,
-  model: @model,
-  options: {
-    allow_all_permissions: @allow_all,
-    disable_plugins: @disable_plugins,
-    stream_output: @stream_output,
-    verbose_tools: @verbose_tools
-  }
-)
+# In Loop class (Loop exposes attr_reader :config, :agent_config)
+iteration = Iteration.new(self)
 
 result = iteration.call(full_prompt, iteration_start: start_time)
 
@@ -148,7 +135,7 @@ end
 ## Implementation Notes
 
 ### Thread Safety
-The class is stateless except for constructor parameters. Multiple instances can be used concurrently.
+The class holds a reference to the parent `Loop` instance and mutable streaming state. It is not intended for concurrent use across multiple loops.
 
 ### Performance Considerations
 - File snapshot operations should be efficient (git-based)
@@ -156,7 +143,7 @@ The class is stateless except for constructor parameters. Multiple instances can
 - Tool counting should be done efficiently via line-by-line processing
 
 ### Extensibility
-The `options` hash allows adding new execution parameters without breaking the interface.
+New config values are automatically available to `Iteration` via `@loop.config` without constructor changes.
 The `IterationResult` struct can be extended with additional fields as needed.
 
 ## Testing Strategy

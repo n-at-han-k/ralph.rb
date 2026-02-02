@@ -55,12 +55,13 @@ module Ralph
           puts "   Started:      #{state.started_at}"
           puts "   Elapsed:      #{elapsed_str}"
           puts "   Promise:      #{state.completion_promise}"
-          agent_label = if state.agent
-            cfg = Agents.resolve(state.agent)
-            cfg ? cfg.config_name : state.agent
-          else
-            "OpenCode"
-          end
+          agent_label =
+            if state.agent
+              cfg = Agents.resolve(state.agent)
+              cfg ? cfg.config_name : state.agent
+            else
+              "OpenCode"
+            end
           puts "   Agent:        #{agent_label}"
           puts "   Model:        #{state.model}" if state.model && !state.model.empty?
           if state.tasks_mode
@@ -136,13 +137,14 @@ module Ralph
                       .first(3)
                       .map { |k, v| "#{k}:#{v}" }
                       .join(" ")
-            status_icon = if iter["completion_detected"]
-              "✅"
-            elsif iter["exit_code"] != 0
-              "❌"
-            else
-              "🔄"
-            end
+            status_icon =
+              if iter["completion_detected"]
+                "✅"
+              elsif iter["exit_code"] != 0
+                "❌"
+              else
+                "🔄"
+              end
             puts "   #{status_icon} ##{iter["iteration"]}: #{format_duration_long(iter["duration_ms"])} | #{tools.empty? ? "no tools" : tools}"
           end
         end

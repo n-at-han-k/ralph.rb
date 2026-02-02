@@ -16,6 +16,15 @@
 - **Numbered files.** Plans are numbered sequentially with a 4-digit prefix (e.g. `0001_plan_name.md`).
 - **Next available number.** When creating a new plan, use the next number after the highest existing prefix.
 
+## Testing
+
+The `bin/` directory contains scripts for verifying code quality:
+
+- **`bin/test`** -- runs the test suite.
+- **`bin/rubocop`** -- runs the RuboCop linter and style checks.
+
+Run both before submitting changes to ensure tests pass and code style is consistent.
+
 ## Ruby Style
 
 ### No early returns. No guard clauses.

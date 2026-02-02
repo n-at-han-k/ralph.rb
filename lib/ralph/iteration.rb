@@ -14,6 +14,20 @@ module Ralph
     :success             # Boolean - overall success (no crashes, exit_code == 0)
   )
 
+  # Outcome wrapper returned by Iteration#run
+  # Knows whether the iteration signifies completion (agent did NOT emit the
+  # completion promise AND we are past min_iterations).
+  IterationOutcome = Struct.new(
+    :result,           # IterationResult
+    :context_at_start, # Storage::Context snapshot taken before the iteration
+    :state_iteration,  # Integer - which iteration number this was
+    :min_iterations    # Integer - minimum iterations required by config
+  ) do
+    def complete?
+      !result.completion_detected && state_iteration >= min_iterations
+    end
+  end
+
   class Iteration
     include ::Ralph::Helpers
 
@@ -22,14 +36,14 @@ module Ralph
 
     attr_reader :struggle_indicators
 
-    def initialize(agent_config:, model:, options:)
-      @agent_config = agent_config
-      @model = model
-      @options = options
-      @struggle_indicators = { 'repeated_errors' => {}, 'no_progress_iterations' => 0, 'short_iterations' => 0 }
+    def initialize(loop_context)
+      @loop = loop_context
+      @config = @loop.config
+      @agent_config = @loop.agent_config
+      @struggle_indicators = @loop.struggle_indicators
 
-      # used in #stream_agent()
-      @compact_tools = !@options[:verbose_tools]
+      # Streaming configuration
+      @compact_tools = !@config.verbose_tools
       @tool_summary_interval_ms = 3000
       @heartbeat_interval_ms = 10_000
 
@@ -42,9 +56,68 @@ module Ralph
       @last_tool_summary_at = 0
     end
 
-    def call(prompt, iteration_start:)
+    # Runs a full iteration: builds prompt, executes agent, records history,
+    # emits warnings, and returns an IterationOutcome.
+    def run
+      context_at_start = Storage::Context.new
+      iteration_start = now_ms
+      state = @loop.state
+      history = @loop.history
+
+      full_prompt = @loop.prompt.build_iteration(state, @agent_config)
+
+      execute_iteration(full_prompt, iteration_start: iteration_start).then do |result|
+        Output::IterationSummary.call(
+          iteration: state.iteration,
+          elapsed_ms: result.duration_ms,
+          tool_counts: result.tool_counts,
+          exit_code: result.exit_code,
+          completion_detected: result.completion_detected
+        )
+
+        history.record(
+          state_iteration: state.iteration,
+          iteration_start: iteration_start,
+          result: result,
+          struggle_indicators: @struggle_indicators
+        )
+
+        combined_output = "#{result.stdout_text}\n#{result.stderr_text}"
+
+        task_completion_detected = if @config.tasks_mode
+                                     check_completion(combined_output, @config.task_promise)
+                                   else
+                                     false
+                                   end
+
+        warn_if_struggling(state.iteration)
+        detect_plugin_error!(combined_output)
+        warn_nonzero_exit(result.exit_code)
+        report_task_completion(task_completion_detected, result.completion_detected, state.iteration)
+
+        IterationOutcome.new(result, context_at_start, state.iteration, @config.min_iterations)
+      end
+    rescue StandardError => e
+      handle_iteration_error(e, iteration_start || now_ms)
+      nil
+    end
+
+    # Returns true when the agent appears to be stuck.
+    # Should only be called after iteration > 2 for meaningful results.
+    def struggling?
+      @struggle_indicators['no_progress_iterations'] >= 3 ||
+        @struggle_indicators['short_iterations'] >= 3
+    end
+
+    private
+
+    # ---------- Iteration execution ----------
+
+    def execute_iteration(prompt, iteration_start:)
       snapshot_before = Git::FileSnapshot.capture
+
       result, exit_code = execute_agent(prompt, iteration_start)
+
       snapshot_after = Git::FileSnapshot.capture
 
       combined = "#{result.stdout_text}\n#{result.stderr_text}"
@@ -57,11 +130,10 @@ module Ralph
         stderr_text: result.stderr_text,
         tool_counts: tool_counts,
         files_modified: snapshot_before.modified_since(snapshot_after),
-        completion_detected: check_completion(combined, @options[:completion_promise]),
+        completion_detected: check_completion(combined, @config.completion_promise),
         errors: extract_errors(combined),
         success: exit_code == 0
-      ).tap { |ir| update_struggle_indicators(ir) }
-
+      ).tap { |iteration_result| update_struggle_indicators(iteration_result) }
     rescue StandardError => e
       IterationResult.new(
         duration_ms: now_ms - iteration_start,
@@ -76,67 +148,114 @@ module Ralph
       )
     end
 
-    # Returns true when the agent appears to be stuck.
-    # Should only be called after iteration > 2 for meaningful results.
-    def struggling?
-      @struggle_indicators['no_progress_iterations'] >= 3 ||
-        @struggle_indicators['short_iterations'] >= 3
-    end
-
-    private
+    # ---------- Struggle tracking ----------
 
     def update_struggle_indicators(result)
-      si = @struggle_indicators
-
       if result.files_modified.empty?
-        si['no_progress_iterations'] += 1
+        @struggle_indicators['no_progress_iterations'] += 1
       else
-        si['no_progress_iterations'] = 0
+        @struggle_indicators['no_progress_iterations'] = 0
       end
 
       if result.duration_ms < 30_000
-        si['short_iterations'] += 1
+        @struggle_indicators['short_iterations'] += 1
       else
-        si['short_iterations'] = 0
+        @struggle_indicators['short_iterations'] = 0
       end
 
       if result.errors.empty?
-        si['repeated_errors'] = {}
+        @struggle_indicators['repeated_errors'] = {}
       else
         result.errors.each do |error|
           key = error[0, 100]
-          si['repeated_errors'][key] = (si['repeated_errors'][key] || 0) + 1
+          @struggle_indicators['repeated_errors'][key] = (@struggle_indicators['repeated_errors'][key] || 0) + 1
         end
       end
     end
 
-    def execute_agent(prompt, iteration_start)
-      cmd_args = @agent_config.build_args(prompt, @model, { allow_all_permissions: @options[:allow_all_permissions] })
-      env = @agent_config.build_env(
-        filter_plugins: @options[:disable_plugins],
-        allow_all_permissions: @options[:allow_all_permissions]
-      )
-      cmd = [@agent_config.command] + cmd_args
-
-      if @options[:stream_output]
-        stream_agent(cmd: cmd, env: env, iteration_start: iteration_start)
-      else
-        capture_agent(cmd: cmd, env: env)
+    def warn_if_struggling(iteration_number)
+      if iteration_number > 2 && struggling?
+        Output::StruggleWarning.call(
+          no_progress_iterations: @struggle_indicators['no_progress_iterations'],
+          short_iterations: @struggle_indicators['short_iterations']
+        )
       end
     end
 
-    def stream_agent(cmd:, env:, iteration_start:)
-      stdin, stdout, stderr, wait_thr = Open3.popen3(env, *cmd)
+    # ---------- Warnings and error detection ----------
+
+    def detect_plugin_error!(combined_output)
+      if @agent_config.type == :opencode && detect_placeholder_plugin_error(combined_output)
+        Output::PluginError.call
+        Storage::State.clear
+        exit 1
+      end
+    end
+
+    def warn_nonzero_exit(exit_code)
+      unless exit_code == 0
+        Output::NonzeroExitWarning.call(agent_config: @agent_config, exit_code: exit_code)
+      end
+    end
+
+    def report_task_completion(task_completion_detected, completion_detected, iteration_number)
+      if task_completion_detected && !completion_detected
+        Output::TaskCompletion.call(config: @config, next_iteration: iteration_number + 1)
+      end
+    end
+
+    def handle_iteration_error(error, iteration_start)
+      if @config.current_pid
+        begin
+          Process.kill('TERM', @config.current_pid)
+        rescue StandardError
+          # process may have exited
+        end
+        @config.current_pid = nil
+      end
+
+      Output::IterationError.call(iteration: @loop.state.iteration, error: error)
+
+      @loop.history.record_error(
+        state_iteration: @loop.state.iteration,
+        iteration_start: iteration_start,
+        error: error
+      )
+
+      @loop.advance_iteration
+      sleep 2
+    end
+
+    # ---------- Agent execution ----------
+
+    def execute_agent(prompt, iteration_start)
+      command_args = @agent_config.build_args(prompt, @config.model,
+                                              { allow_all_permissions: @config.allow_all_permissions })
+      environment = @agent_config.build_env(
+        filter_plugins: @config.disable_plugins,
+        allow_all_permissions: @config.allow_all_permissions
+      )
+      command = [@agent_config.command] + command_args
+
+      if @config.stream_output
+        stream_agent(command: command, environment: environment, iteration_start: iteration_start)
+      else
+        capture_agent(command: command, environment: environment)
+      end
+    end
+
+    def stream_agent(command:, environment:, iteration_start:)
+      stdin, stdout, stderr, wait_thread = Open3.popen3(environment, *command)
       stdin.close
 
-      ht = heartbeat_thread(iteration_start)
-      out_t = stdout_reader_thread(stdout)
-      err_t = stderr_reader_thread(stderr)
+      heartbeat = heartbeat_thread(iteration_start)
+      stdout_reader = stdout_reader_thread(stdout)
+      stderr_reader = stderr_reader_thread(stderr)
 
-      out_t.join
-      err_t.join
-      exit_status = wait_thr.value
-      ht.kill
+      stdout_reader.join
+      stderr_reader.join
+      exit_status = wait_thread.value
+      heartbeat.kill
 
       @mutex.synchronize { maybe_print_tool_summary(force: true) }
 
@@ -144,62 +263,57 @@ module Ralph
         stdout_text: @stream_stdout_text,
         stderr_text: @stream_stderr_text,
         tool_counts: @stream_tool_counts
-      ).then { |result| [result, exit_status.exitstatus || 1] }
+      ).then { |stream_result| [stream_result, exit_status.exitstatus || 1] }
     end
 
     def maybe_print_tool_summary(force: false)
-      return unless @compact_tools
-      return if @stream_tool_counts.empty?
-
-      now = now_ms
-      return if !force && (now - @last_tool_summary_at < @tool_summary_interval_ms)
-
-      summary = format_tool_summary(@stream_tool_counts)
-      return if summary.empty?
-
-      puts "| Tools    #{summary}"
-      @last_printed_at = now_ms
-      @last_tool_summary_at = now_ms
+      if @compact_tools && @stream_tool_counts.any?
+        now = now_ms
+        if force || (now - @last_tool_summary_at >= @tool_summary_interval_ms)
+          format_tool_summary(@stream_tool_counts).then do |summary|
+            unless summary.empty?
+              puts "| Tools    #{summary}"
+              @last_printed_at = now_ms
+              @last_tool_summary_at = now_ms
+            end
+          end
+        end
+      end
     end
 
     def handle_line(line, is_error)
       @mutex.synchronize { @last_activity_at = now_ms }
       tool = @agent_config.parse_tool_output(line)
-      if tool
-        @mutex.synchronize { @stream_tool_counts[tool] += 1 }
-        if @compact_tools
-          @mutex.synchronize { maybe_print_tool_summary }
-          return
-        end
-      end
 
-      if line.empty?
-        puts ''
-        @mutex.synchronize { @last_printed_at = now_ms }
-        return
-      end
+      @mutex.synchronize { @stream_tool_counts[tool] += 1 } if tool
 
-      if is_error
-        warn line
+      if tool && @compact_tools
+        @mutex.synchronize { maybe_print_tool_summary }
       else
-        puts line
+        if line.empty?
+          puts ''
+        elsif is_error
+          warn line
+        else
+          puts line
+        end
+        @mutex.synchronize { @last_printed_at = now_ms }
       end
-      @mutex.synchronize { @last_printed_at = now_ms }
     end
 
     def heartbeat_thread(iteration_start)
-      @__heartbeat_thread__ ||= Thread.new do
+      Thread.new do
         loop do
           sleep(@heartbeat_interval_ms / 1000.0)
           now = now_ms
-          lp = @mutex.synchronize { @last_printed_at }
-          next unless now - lp >= @heartbeat_interval_ms
-
-          elapsed = format_duration(now - iteration_start)
-          la = @mutex.synchronize { @last_activity_at }
-          since_activity = format_duration(now - la)
-          puts "⏳ working... elapsed #{elapsed} · last activity #{since_activity} ago"
-          @mutex.synchronize { @last_printed_at = now_ms }
+          last_printed = @mutex.synchronize { @last_printed_at }
+          if now - last_printed >= @heartbeat_interval_ms
+            elapsed = format_duration(now - iteration_start)
+            last_activity = @mutex.synchronize { @last_activity_at }
+            since_activity = format_duration(now - last_activity)
+            puts "⏳ working... elapsed #{elapsed} · last activity #{since_activity} ago"
+            @mutex.synchronize { @last_printed_at = now_ms }
+          end
         end
       rescue StandardError
         # thread cleanup
@@ -207,14 +321,14 @@ module Ralph
     end
 
     def stdout_reader_thread(stdout_io)
-      @__stdout_reader_thread__ ||= Thread.new do
+      Thread.new do
         buffer = +''
         while (chunk = stdout_io.read(4096))
           @stream_stdout_text << chunk
           buffer << chunk
-          while (idx = buffer.index("\n"))
-            l = buffer.slice!(0, idx + 1).chomp
-            handle_line(l, false)
+          while (index = buffer.index("\n"))
+            line = buffer.slice!(0, index + 1).chomp
+            handle_line(line, false)
           end
         end
         handle_line(buffer, false) unless buffer.empty?
@@ -224,14 +338,14 @@ module Ralph
     end
 
     def stderr_reader_thread(stderr_io)
-      @__stderr_reader_thread__ ||= Thread.new do
+      Thread.new do
         buffer = +''
         while (chunk = stderr_io.read(4096))
           @stream_stderr_text << chunk
           buffer << chunk
-          while (idx = buffer.index("\n"))
-            l = buffer.slice!(0, idx + 1).chomp
-            handle_line(l, true)
+          while (index = buffer.index("\n"))
+            line = buffer.slice!(0, index + 1).chomp
+            handle_line(line, true)
           end
         end
         handle_line(buffer, true) unless buffer.empty?
@@ -240,17 +354,17 @@ module Ralph
       end
     end
 
-    def capture_agent(cmd:, env:)
-      stdout, stderr, status = Open3.capture3(env, *cmd, stdin_data: '')
+    def capture_agent(command:, environment:)
+      stdout, stderr, status = Open3.capture3(environment, *command, stdin_data: '')
       tool_counts = collect_tool_summary_from_text("#{stdout}\n#{stderr}", @agent_config)
-      result = StreamResult.new(
+      StreamResult.new(
         stdout_text: stdout,
         stderr_text: stderr,
         tool_counts: tool_counts
-      )
-      warn result.stderr_text unless result.stderr_text.empty?
-      puts result.stdout_text
-      [result, status.exitstatus || 1]
+      ).tap do |stream_result|
+        warn stream_result.stderr_text unless stream_result.stderr_text.empty?
+        puts stream_result.stdout_text
+      end.then { |stream_result| [stream_result, status.exitstatus || 1] }
     end
   end
 end

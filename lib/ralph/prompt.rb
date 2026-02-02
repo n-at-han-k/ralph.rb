@@ -28,18 +28,19 @@ module Ralph
     # +_agent+ is the agent config (reserved for future use).
     def build_iteration(state, _agent)
       context = Storage::Context.new
-      context_section = if context.present?
-        <<~SECTION
+      context_section =
+        if context.present?
+          <<~SECTION
 
-          ## Additional Context (added by user mid-loop)
+            ## Additional Context (added by user mid-loop)
 
-          #{context.content}
+            #{context.content}
 
-          ---
-        SECTION
-      else
-        ""
-      end
+            ---
+          SECTION
+        else
+          ""
+        end
 
       if state.tasks_mode
         tasks_section = build_tasks_section(state)
@@ -120,28 +121,29 @@ module Ralph
         current_task = tasks.current
         next_task = tasks.next
 
-        task_instructions = if current_task
-          <<~INST
-            🔄 CURRENT TASK: "#{current_task.text}"
-               Focus on completing this specific task.
-               When done: Mark as [x] in .ralph/ralph-tasks.md and output <promise>#{state.task_promise}</promise>
-          INST
-        elsif next_task
-          <<~INST
-            📍 NEXT TASK: "#{next_task.text}"
-               Mark as [/] in .ralph/ralph-tasks.md before starting.
-               When done: Mark as [x] and output <promise>#{state.task_promise}</promise>
-          INST
-        elsif tasks.all_complete?
-          <<~INST
-            ✅ ALL TASKS COMPLETE!
-               Output <promise>#{state.completion_promise}</promise> to finish.
-          INST
-        else
-          <<~INST
-            📋 No tasks found. Add tasks to .ralph/ralph-tasks.md or use `ralph --add-task`
-          INST
-        end
+        task_instructions =
+          if current_task
+            <<~INST
+              🔄 CURRENT TASK: "#{current_task.text}"
+                 Focus on completing this specific task.
+                 When done: Mark as [x] in .ralph/ralph-tasks.md and output <promise>#{state.task_promise}</promise>
+            INST
+          elsif next_task
+            <<~INST
+              📍 NEXT TASK: "#{next_task.text}"
+                 Mark as [/] in .ralph/ralph-tasks.md before starting.
+                 When done: Mark as [x] and output <promise>#{state.task_promise}</promise>
+            INST
+          elsif tasks.all_complete?
+            <<~INST
+              ✅ ALL TASKS COMPLETE!
+                 Output <promise>#{state.completion_promise}</promise> to finish.
+            INST
+          else
+            <<~INST
+              📋 No tasks found. Add tasks to .ralph/ralph-tasks.md or use `ralph --add-task`
+            INST
+          end
 
         <<~SECTION
 
