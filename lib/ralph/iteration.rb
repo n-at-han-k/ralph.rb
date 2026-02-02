@@ -40,6 +40,8 @@ module Ralph
       @loop = loop_context
       @config = @loop.config
       @agent_config = @loop.agent_config
+      @state = @loop.state
+      @history = @loop.history
       @struggle_indicators = @loop.struggle_indicators
 
       # Streaming configuration
@@ -61,22 +63,44 @@ module Ralph
     def run
       context_at_start = Storage::Context.new
       iteration_start = now_ms
-      state = @loop.state
-      history = @loop.history
+      full_prompt = @loop.prompt.build_iteration(@state, @agent_config)
 
-      full_prompt = @loop.prompt.build_iteration(state, @agent_config)
+      snapshot_before = Git::FileSnapshot.capture
 
-      execute_iteration(full_prompt, iteration_start: iteration_start).then do |result|
+      begin
+        agent_result, exit_code = execute_agent(full_prompt, iteration_start)
+      rescue StandardError => agent_error
+        exit_code = -1
+        agent_result = StreamResult.new(stdout_text: '', stderr_text: agent_error.to_s, tool_counts: {})
+      end
+
+      snapshot_after = Git::FileSnapshot.capture
+
+      combined = "#{agent_result.stdout_text}\n#{agent_result.stderr_text}"
+      tool_counts = agent_result.tool_counts.is_a?(Hash) ? agent_result.tool_counts : agent_result.tool_counts.to_h
+
+      IterationResult.new(
+        now_ms - iteration_start,
+        exit_code,
+        agent_result.stdout_text,
+        agent_result.stderr_text,
+        tool_counts,
+        snapshot_before.modified_since(snapshot_after),
+        check_completion(combined, @config.completion_promise),
+        extract_errors(combined),
+        exit_code == 0
+      ).tap { |result| update_struggle_indicators(result) }
+       .then do |result|
         Output::IterationSummary.call(
-          iteration: state.iteration,
+          iteration: @state.iteration,
           elapsed_ms: result.duration_ms,
           tool_counts: result.tool_counts,
           exit_code: result.exit_code,
           completion_detected: result.completion_detected
         )
 
-        history.record(
-          state_iteration: state.iteration,
+        @history.record(
+          state_iteration: @state.iteration,
           iteration_start: iteration_start,
           result: result,
           struggle_indicators: @struggle_indicators
@@ -91,15 +115,15 @@ module Ralph
             false
           end
 
-        warn_if_struggling(state.iteration)
+        warn_if_struggling(@state.iteration)
         detect_plugin_error!(combined_output)
         warn_nonzero_exit(result.exit_code)
-        report_task_completion(task_completion_detected, result.completion_detected, state.iteration)
+        report_task_completion(task_completion_detected, result.completion_detected, @state.iteration)
 
-        IterationOutcome.new(result, context_at_start, state.iteration, @config.min_iterations)
+        IterationOutcome.new(result, context_at_start, @state.iteration, @config.min_iterations)
       end
-    rescue StandardError => e
-      handle_iteration_error(e, iteration_start || now_ms)
+    rescue StandardError => error
+      handle_iteration_error(error, iteration_start || now_ms)
       nil
     end
 
@@ -111,43 +135,6 @@ module Ralph
     end
 
     private
-
-    # ---------- Iteration execution ----------
-
-    def execute_iteration(prompt, iteration_start:)
-      snapshot_before = Git::FileSnapshot.capture
-
-      result, exit_code = execute_agent(prompt, iteration_start)
-
-      snapshot_after = Git::FileSnapshot.capture
-
-      combined = "#{result.stdout_text}\n#{result.stderr_text}"
-      tool_counts = result.tool_counts.is_a?(Hash) ? result.tool_counts : result.tool_counts.to_h
-
-      IterationResult.new(
-        duration_ms: now_ms - iteration_start,
-        exit_code: exit_code,
-        stdout_text: result.stdout_text,
-        stderr_text: result.stderr_text,
-        tool_counts: tool_counts,
-        files_modified: snapshot_before.modified_since(snapshot_after),
-        completion_detected: check_completion(combined, @config.completion_promise),
-        errors: extract_errors(combined),
-        success: exit_code == 0
-      ).tap { |iteration_result| update_struggle_indicators(iteration_result) }
-    rescue StandardError => e
-      IterationResult.new(
-        duration_ms: now_ms - iteration_start,
-        exit_code: -1,
-        stdout_text: '',
-        stderr_text: e.to_s,
-        tool_counts: {},
-        files_modified: [],
-        completion_detected: false,
-        errors: [e.to_s],
-        success: false
-      )
-    end
 
     # ---------- Struggle tracking ----------
 
