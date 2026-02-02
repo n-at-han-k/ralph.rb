@@ -3,7 +3,7 @@
 require_relative "lib/ralph/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "ralph.rb"
+  spec.name = "ralph"
   spec.version = Ralph::VERSION
   spec.authors = ["Nathan Kidd"]
   spec.email = ["nathankidd@hey.com"]
