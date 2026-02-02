@@ -50,41 +50,9 @@ module Ralph
       parts.join(" • ")
     end
 
-    def collect_tool_summary_from_text(text, agent)
-      counts = Hash.new(0)
-      text.each_line do |line|
-        tool = agent.parse_tool_output(line)
-        counts[tool] += 1 if tool
-      end
-      counts
-    end
-
     def check_completion(output, promise)
       pattern = /<promise>\s*#{escape_regex(promise)}\s*<\/promise>/i
       output.match?(pattern)
-    end
-
-    def detect_placeholder_plugin_error(output)
-      output.include?("ralph-wiggum is not yet ready for use. This is a placeholder package.")
-    end
-
-    # Extract error patterns from output
-    def extract_errors(output)
-      errors = []
-      output.each_line do |line|
-        lower = line.downcase
-        if lower.include?("error:") ||
-           lower.include?("failed:") ||
-           lower.include?("exception:") ||
-           lower.include?("typeerror") ||
-           lower.include?("syntaxerror") ||
-           lower.include?("referenceerror") ||
-           (lower.include?("test") && lower.include?("fail"))
-          cleaned = line.strip[0, 200]
-          errors << cleaned if cleaned && !cleaned.empty? && !errors.include?(cleaned)
-        end
-      end
-      errors.first(10)
     end
 
     # Cross-platform which

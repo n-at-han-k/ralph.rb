@@ -23,88 +23,69 @@ module Ralph
       @struggle_indicators = { 'repeated_errors' => {}, 'no_progress_iterations' => 0, 'short_iterations' => 0 }
 
       @prompt = @config.prompt
+      @state = Storage::State.from_config(@config, prompt: @prompt).tap(&:save)
+      @history = Storage::History.new
     end
 
+    def existing_state = @_existing_state ||= Storate::State.load
+
     def run
-      Storage::State.load.then do |existing_state|
-        if existing_state&.active
-          Output::ActiveLoopError.call(
-            iteration: existing_state.iteration,
-            started_at: existing_state.started_at,
-            state_path: Storage::State.path
-          )
-          exit 1
+      if existing_state&.active
+        Output::ActiveLoopError.call(
+          iteration: existing_state.iteration,
+          started_at: existing_state.started_at,
+          state_path: Storage::State.path
+        )
+        exit 1
+      end
+
+      Output::Banner.call(self)
+
+      setup_signal_handler
+
+      # |..................................................|
+      # |--------------------------------------------------|
+      # |==================================================|
+      # |**************************************************|
+      # |##################################################|
+      # | Main loop                                        |
+      # |##################################################|
+      # |**************************************************|
+      # |==================================================|
+      # |--------------------------------------------------|
+      # |..................................................|
+      #
+      # © 2026 Nathan K.
+      # Honestly, I've no idea where this graphic
+      # wonder came from. It's MIT lisenced now, thought.
+
+      loop do
+        if @config.stopping
+          break
+        elsif max_iterations_reached?
+          Output::MaxIterationsReached.call(self)
+          Storage::State.clear
+          break
         else
-          Output::NoPluginWarning.call(self) if @config.disable_plugins
-
-          Output::Banner.call(self)
-
-          @state = Storage::State.from_config(@config, prompt: @prompt).tap(&:save)
-
-          if @config.tasks_mode && !File.exist?(Storage::Tasks.tasks_path)
-            FileUtils.mkdir_p(Storage::State.dir)
-
-            File.write(
-              Storage::Tasks.tasks_path,
-              "# Ralph Tasks\n\nAdd your tasks below using: `ralph --add-task \"description\"`\n"
-            )
-
-            Output::TasksFileCreated.call(path: Storage::Tasks.tasks_path)
-          end
-
-          @history = Storage::History.new
-
-          Output::ConfigSummary.call(self)
-
-          setup_signal_handler
-
-          # |..................................................|
-          # |--------------------------------------------------|
-          # |==================================================|
-          # |**************************************************|
-          # |##################################################|
-          # | Main loop                                        |
-          # |##################################################|
-          # |**************************************************|
-          # |==================================================|
-          # |--------------------------------------------------|
-          # |..................................................|
-          #
-          # © 2026 Nathan K.
-          # Honestly, I've no idea where this graphic
-          # wonder came from. It's MIT lisenced now, thought.
-
-          loop do
-            if @config.stopping
-              break
-            elsif max_iterations_reached?
-              Output::MaxIterationsReached.call(self)
+          Iteration.new(self).run.then do |outcome|
+            if outcome&.complete?
+              Output::CompletionDetected.call(self)
               Storage::State.clear
+              Storage::History.clear_history
+              Storage::Context.new.clear
               break
             else
-              Output::Iteration::Header.call(self)
-
-              Iteration.new(self).run.then do |outcome|
-                if outcome&.complete?
-                  Output::CompletionDetected.call(self)
-                  Storage::State.clear
-                  Storage::History.clear_history
-                  Storage::Context.new.clear
-                  break
-                else
-                  if outcome
-                    if outcome.context_at_start.present?
-                      Output::ContextConsumed.call
-                      outcome.context_at_start.clear
-                    end
-                  end
-
-                  @state.iteration += 1
-                  @state.save
-
-                  sleep 1
+              if outcome
+                if outcome.context_at_start.present?
+                  Output::ContextConsumed.call
+                  outcome.context_at_start.clear
                 end
               end
+
+              @state.iteration += 1
+              @state.save
+
+              sleep 1
             end
           end
         end

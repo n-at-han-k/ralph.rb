@@ -26,6 +26,12 @@ module Ralph
         match = strip_ansi(line).match(/^\|\s{2}([A-Za-z0-9_-]+)/)
         match ? match[1] : nil
       end
+
+      def detect_fatal_error(output)
+        if output.include?("ralph-wiggum is not yet ready for use. This is a placeholder package.")
+          "Placeholder plugin error detected"
+        end
+      end
     end
   end
 end
