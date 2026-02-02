@@ -27,10 +27,11 @@ module Ralph
       }
 
       @prompt = @config.prompt
+      @existing_state = Storage::State.load
       @state.save
     end
 
-    def existing_state = @_existing_state ||= Storage::State.load
+    def existing_state = @existing_state
 
     def run
       if existing_state&.active
@@ -66,14 +67,34 @@ module Ralph
           @state.clear
           break
         else
-          Output::Iteration::Header.call(@loop)
+          Output::Iteration::Header.call(self)
 
-          Iteration.new(self).run.then do |result|
-            if result
-              Output::Iteration::Summary.call(self, result)
+          iteration = Iteration.new(self)
+          iteration.run.then do |result|
+            Output::Iteration::Summary.call(self, result) unless result.error?
 
-              combined_output = result.combined_output
+            case result.status
+            when :fatal
+              Output::PluginError.call
+              @state.clear
+              exit 1
+            when :failed
+              Output::NonzeroExitWarning.call(agent: @config.chosen_agent, exit_code: result.exit_code)
 
+              if @config.tasks_mode
+                if check_completion(result.combined_output, @config.task_promise)
+                  Output::TaskCompletion.call(config: @config, next_iteration: @state.iteration + 1)
+                end
+              end
+            when :completed
+              if @state.iteration >= @config.min_iterations
+                Output::CompletionDetected.call(self)
+                @state.clear
+                Storage::History.clear_history
+                @context.clear
+                break
+              end
+            when :continuing
               if @state.iteration > 2 && iteration.struggling?
                 Output::StruggleWarning.call(
                   no_progress_iterations: @struggle_indicators['no_progress_iterations'],
@@ -81,53 +102,24 @@ module Ralph
                 )
               end
 
-              Agents.resolve(@config.chosen_agent).then do |agent|
-
-                agent.validate!
-
-                agent.detect_fatal_error(combined_output).then do |fatal_error|
-                  if fatal_error
-                    Output::PluginError.call
-                    @state.clear
-                    exit 1
-                  end
-                end
-
-                unless result.exit_code == 0
-                  Output::NonzeroExitWarning.call(agent: agent, exit_code: result.exit_code)
-                end
-
-                if @config.tasks_mode && !result.completion_detected
-                  if check_completion(combined_output, @config.task_promise)
-                    Output::TaskCompletion.call(config: @config, next_iteration: @state.iteration + 1)
-                  end
-                end
-
-                if !result.completion_detected && @state.iteration >= @config.min_iterations
-                  Output::CompletionDetected.call(self)
-                  @state.clear
-                  Storage::History.clear_history
-                  @context.clear
-                  break
-                else
-                  if iteration.context_at_start.present?
-                    Output::ContextConsumed.call
-                    iteration.context_at_start.clear
-                  end
-
-                  @state.iteration += 1
-                  @state.save
-
-                  sleep 1
+              if @config.tasks_mode
+                if check_completion(result.combined_output, @config.task_promise)
+                  Output::TaskCompletion.call(config: @config, next_iteration: @state.iteration + 1)
                 end
               end
 
-            else
-              @state.iteration += 1
-              @state.save
-
-              sleep 1
+              if iteration.context_at_start.present?
+                Output::ContextConsumed.call
+                iteration.context_at_start.clear
+              end
+            when :error
+              # Already handled inside Iteration#handle_iteration_error
             end
+
+            @state.iteration += 1
+            @state.save
+
+            sleep 1
           end
         end
       end

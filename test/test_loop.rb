@@ -65,67 +65,53 @@ class TestLoopBugs < Minitest::Test
   end
 
   # -----------------------------------------------------------------------
-  # Bug 1: existing_state always returns active state because @state.save
-  # in initialize writes active:true to disk before existing_state reads it.
-  #
-  # The intent is: check if a PREVIOUS loop is already running. But since
-  # initialize saves the NEW state first, existing_state always finds it.
+  # Bug 1 FIX: existing_state now captures state BEFORE saving, so it does
+  # not read back the state that initialize just saved.
   # -----------------------------------------------------------------------
-  def test_existing_state_always_sees_self_as_active
+  def test_existing_state_does_not_see_self_as_active
     state = build_state(active: true)
     config = build_config
     history = Ralph::Storage::History.new
     context = Ralph::Storage::Context.new
     tasks = Ralph::Storage::Tasks.new
 
+    # No prior state file exists on disk
+    refute File.exist?(Ralph::Storage::State.path),
+      "Precondition: no state file before Loop.new"
+
     loop_instance = Ralph::Loop.new(config, state: state, history: history, context: context, tasks: tasks)
 
-    # After initialize, the state file exists on disk with active: true
-    # because initialize calls @state.save.
+    # After initialize, the state file exists (because initialize saves it)
     assert File.exist?(Ralph::Storage::State.path),
-      "State file should exist after Loop.new (because initialize saves it)"
+      "State file should exist after Loop.new"
 
-    loaded_state = Ralph::Storage::State.load
-    assert loaded_state.active,
-      "The saved state has active: true"
-
-    # The bug: existing_state reads from disk and gets the state we JUST saved.
-    # It should detect a PREVIOUS loop's state, not our own.
-    existing = loop_instance.existing_state
-    assert existing.active,
-      "BUG: existing_state returns the state we just saved (active: true), " \
-      "so the 'already active' guard in run() will ALWAYS trigger and exit 1"
+    # But existing_state was captured BEFORE the save, so it's nil
+    assert_nil loop_instance.existing_state,
+      "existing_state should be nil when no prior loop was running"
   end
 
-  # Prove the bug manifests: run() always exits because it thinks another loop is active.
-  def test_run_always_exits_due_to_existing_state_race
+  def test_existing_state_detects_previously_active_loop
+    # Simulate a previous loop's state file on disk
     state = build_state(active: true)
+    state.save
+
+    # Now create a new loop — it should detect the previous state
+    new_state = build_state(active: true, iteration: 1)
     config = build_config
     history = Ralph::Storage::History.new
     context = Ralph::Storage::Context.new
     tasks = Ralph::Storage::Tasks.new
 
-    loop_instance = Ralph::Loop.new(config, state: state, history: history, context: context, tasks: tasks)
+    loop_instance = Ralph::Loop.new(config, state: new_state, history: history, context: context, tasks: tasks)
 
-    # run() should proceed into the main loop, but instead it calls exit(1)
-    # because existing_state&.active is true (it read back our own state).
-    exit_raised = assert_raises(SystemExit) do
-      capture_io { loop_instance.run }
-    end
-
-    assert_equal 1, exit_raised.status,
-      "BUG: run() exits with status 1 because existing_state reads back the " \
-      "state that initialize just saved, making it think another loop is active"
+    assert loop_instance.existing_state&.active,
+      "existing_state should detect the previously saved active state"
   end
 
   # -----------------------------------------------------------------------
-  # Bug 2: loop.rb:69 references @loop which does not exist on Loop.
-  # Output::Iteration::Header.call(@loop) should be self.
+  # Bug 2 FIX: Output::Iteration::Header.call now receives self, not @loop.
   # -----------------------------------------------------------------------
-  def test_iteration_header_receives_nil_instead_of_loop
-    # @loop is not defined on Loop, so it is nil.
-    # Output::Iteration::Header.call(nil) will raise NoMethodError
-    # when it tries to call nil.config
+  def test_iteration_header_receives_loop_not_nil
     state = build_state(active: true)
     config = build_config(stopping: false, max_iterations: 1)
     history = Ralph::Storage::History.new
@@ -134,45 +120,96 @@ class TestLoopBugs < Minitest::Test
 
     loop_instance = Ralph::Loop.new(config, state: state, history: history, context: context, tasks: tasks)
 
-    # Verify @loop is nil on Loop instances (the ivar doesn't exist)
-    refute loop_instance.instance_variable_defined?(:@loop),
-      "BUG: @loop is not a defined instance variable on Loop — " \
-      "line 69 uses @loop but should use self"
+    # Verify the source no longer references @loop in the Header call
+    source = File.read(File.expand_path("../lib/ralph/loop.rb", __dir__))
+    run_method = source[/def run\b.*?(?=\n\s{4}(?:def |private\b|end\b\s*\z))/m]
 
-    # Directly test that the Header call with nil (what @loop evaluates to) fails
-    assert_raises(NoMethodError) do
-      Ralph::Output::Iteration::Header.call(nil)
-    end
+    refute_match(/Header\.call\(@loop\)/, run_method,
+      "Header.call should receive self, not @loop")
+    assert_match(/Header\.call\(self\)/, run_method,
+      "Header.call should receive self")
   end
 
   # -----------------------------------------------------------------------
-  # Bug 3: loop.rb:77 and 113 reference local variable `iteration` which
-  # is never assigned. The Iteration instance is created as
-  # Iteration.new(self).run, and only the result is yielded into .then.
+  # Bug 3 FIX: iteration is now assigned as a local variable before .run.
   # -----------------------------------------------------------------------
-  def test_iteration_variable_not_available_in_loop_run
-    # Parse the source of Loop#run and confirm that `iteration` is used
-    # as a local variable but never assigned.
+  def test_iteration_variable_is_assigned_in_loop_run
     source = File.read(File.expand_path("../lib/ralph/loop.rb", __dir__))
-
-    # Extract the run method body (between "def run" and the next "def " or "private")
     run_method = source[/def run\b.*?(?=\n\s{4}(?:def |private\b|end\b\s*\z))/m]
 
-    # `iteration.struggling?` and `iteration.context_at_start` appear in the code
+    # iteration is now assigned as a local variable
+    assert_match(/^\s*iteration\s*=\s*Iteration\.new/, run_method,
+      "iteration should be assigned as a local variable")
+
+    # iteration.struggling? and iteration.context_at_start are reachable
     assert_match(/iteration\.struggling\?/, run_method,
-      "Precondition: the code references iteration.struggling?")
+      "iteration.struggling? should still be referenced")
     assert_match(/iteration\.context_at_start/, run_method,
-      "Precondition: the code references iteration.context_at_start")
+      "iteration.context_at_start should still be referenced")
+  end
+end
 
-    # But `iteration` is never assigned as a local variable.
-    # Iteration.new(self).run.then yields `result`, not the Iteration instance.
-    refute_match(/^\s*iteration\s*=/, run_method,
-      "BUG: `iteration` is referenced at lines 77 and 113 but never assigned " \
-      "as a local variable. Iteration.new(self).run.then yields `result`, " \
-      "not the Iteration instance. This will raise NameError at runtime.")
+class TestIterationResult < Minitest::Test
+  def test_result_statuses
+    assert_equal %i[completed continuing failed fatal error],
+      Ralph::Iteration::Result::STATUSES
+  end
 
-    # Also confirm the .then block receives `result`, not `iteration`
-    assert_match(/\.then do \|result\|/, run_method,
-      "The .then block yields `result`, confirming `iteration` is not available")
+  def test_result_status_predicates
+    result = Ralph::Iteration::Result.new(
+      status: :completed,
+      agent_result: nil,
+      duration_ms: 100,
+      files_modified: [],
+      completion_detected: true,
+      errors: []
+    )
+
+    assert result.completed?
+    refute result.continuing?
+    refute result.failed?
+    refute result.fatal?
+    refute result.error?
+  end
+
+  def test_result_with_nil_agent_result
+    result = Ralph::Iteration::Result.new(
+      status: :error,
+      agent_result: nil,
+      duration_ms: 100,
+      files_modified: [],
+      completion_detected: false,
+      errors: ["something went wrong"]
+    )
+
+    assert result.error?
+    assert_nil result.exit_code
+    assert_equal "", result.stdout_text
+    assert_equal "", result.stderr_text
+    assert_equal({}, result.tool_counts)
+    assert_equal "", result.combined_output
+  end
+
+  def test_each_status_predicate
+    Ralph::Iteration::Result::STATUSES.each do |status|
+      result = Ralph::Iteration::Result.new(
+        status: status,
+        agent_result: nil,
+        duration_ms: 0,
+        files_modified: [],
+        completion_detected: false,
+        errors: []
+      )
+
+      assert_equal status, result.status
+      assert result.send(:"#{status}?"),
+        "#{status}? should be true when status is #{status}"
+
+      other_statuses = Ralph::Iteration::Result::STATUSES - [status]
+      other_statuses.each do |other|
+        refute result.send(:"#{other}?"),
+          "#{other}? should be false when status is #{status}"
+      end
+    end
   end
 end

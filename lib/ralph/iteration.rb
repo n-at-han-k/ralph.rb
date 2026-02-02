@@ -2,10 +2,19 @@
 
 module Ralph
   class Iteration
+    # Statuses:
+    #   :completed  — completion promise detected, iteration succeeded
+    #   :continuing — no completion detected, keep looping
+    #   :failed     — non-zero exit code from the agent process
+    #   :fatal      — fatal error detected in agent output (unrecoverable)
+    #   :error      — iteration raised an exception
     class Result
-      attr_reader :agent_result, :duration_ms, :files_modified, :completion_detected, :errors
+      STATUSES = %i[completed continuing failed fatal error].freeze
 
-      def initialize(agent_result:, duration_ms:, files_modified:, completion_detected:, errors:)
+      attr_reader :status, :agent_result, :duration_ms, :files_modified, :completion_detected, :errors
+
+      def initialize(status:, agent_result:, duration_ms:, files_modified:, completion_detected:, errors:)
+        @status = status
         @agent_result = agent_result
         @duration_ms = duration_ms
         @files_modified = files_modified
@@ -13,11 +22,17 @@ module Ralph
         @errors = errors
       end
 
-      def exit_code       = agent_result.exit_code
-      def stdout_text     = agent_result.stdout_text
-      def stderr_text     = agent_result.stderr_text
-      def tool_counts     = agent_result.tool_counts
-      def combined_output = agent_result.combined_output
+      def exit_code       = agent_result&.exit_code
+      def stdout_text     = agent_result&.stdout_text || ""
+      def stderr_text     = agent_result&.stderr_text || ""
+      def tool_counts     = agent_result&.tool_counts || {}
+      def combined_output = agent_result&.combined_output || ""
+
+      def completed?  = status == :completed
+      def continuing? = status == :continuing
+      def failed?     = status == :failed
+      def fatal?      = status == :fatal
+      def error?      = status == :error
     end
 
     include ::Ralph::Helpers
@@ -81,12 +96,27 @@ module Ralph
 
       snapshot_after = Git::FileSnapshot.capture
 
+      combined_output = agent_result.combined_output
+      completion_detected = check_completion(combined_output, @config.completion_promise)
+      fatal_error = @agent.detect_fatal_error(combined_output)
+
+      status = if fatal_error
+                 :fatal
+               elsif agent_result.exit_code != 0
+                 :failed
+               elsif completion_detected
+                 :completed
+               else
+                 :continuing
+               end
+
       Result.new(
+        status: status,
         agent_result: agent_result,
         duration_ms: now_ms - iteration_start,
         files_modified: snapshot_before.modified_since(snapshot_after),
-        completion_detected: check_completion(agent_result.combined_output, @config.completion_promise),
-        errors: @agent.extract_errors(agent_result.combined_output)
+        completion_detected: completion_detected,
+        errors: @agent.extract_errors(combined_output)
       ).tap do |result|
 
         update_struggle_indicators(result)
@@ -100,7 +130,6 @@ module Ralph
       end
     rescue StandardError => error
       handle_iteration_error(error, iteration_start || now_ms)
-      nil
     end
 
     # Returns true when the agent appears to be stuck.
@@ -151,14 +180,22 @@ module Ralph
 
       Output::Iteration::Error.call(@loop, error)
 
-      @loop.history.record_error(
-        state_iteration: @loop.state.iteration,
+      @history.record_error(
+        state_iteration: @state.iteration,
         iteration_start: iteration_start,
         error: error
       )
 
-      @loop.advance_iteration
       sleep 2
+
+      Result.new(
+        status: :error,
+        agent_result: nil,
+        duration_ms: now_ms - iteration_start,
+        files_modified: [],
+        completion_detected: false,
+        errors: [error.message]
+      )
     end
 
     # ---------- Agent execution ----------
