@@ -8,11 +8,15 @@ All terminal output in Ralph is structured as callable output classes under the 
 lib/ralph/output/
   no_plugin_warning.rb    # Ralph::Output::NoPluginWarning
   banner.rb               # Ralph::Output::Banner
-  iteration_summary.rb    # Ralph::Output::IterationSummary
+  iteration.rb            # Ralph::Output::Iteration::Header
+                          # Ralph::Output::Iteration::Summary
+                          # Ralph::Output::Iteration::Error
   ...
 ```
 
-Each file defines exactly one class inside `module Ralph; module Output; ... end; end`.
+Each file defines one or more classes inside `module Ralph; module Output; ... end; end`.
+
+When several output classes share a common concern (e.g. iteration lifecycle), they are grouped under a nested module in a single file. The submodule acts as a namespace — it contains only classes, no logic of its own.
 
 ## Interface: The Callable Object Pattern
 
@@ -38,6 +42,7 @@ end
 | **Arguments** | All inputs passed as **keyword arguments** for clarity at the call site |
 | **Return value** | None expected. These are fire-and-forget side-effect methods |
 | **Single responsibility** | One output concern per class. If a method prints a banner, that's one class. If it prints an iteration summary, that's another |
+| **Grouping** | Related output classes may be grouped under a nested module in a single file (e.g. `Output::Iteration::Header`, `Output::Iteration::Summary`, `Output::Iteration::Error` all live in `iteration.rb`) |
 | **No base class** | Plain `Object` inheritance. No shared superclass or included module required |
 
 ## Output Channels

@@ -90,13 +90,7 @@ module Ralph
         extract_errors(combined),
         exit_code == 0
       ).tap { |result| update_struggle_indicators(result) }.then do |result|
-        Output::IterationSummary.call(
-          iteration: @state.iteration,
-          elapsed_ms: result.duration_ms,
-          tool_counts: result.tool_counts,
-          exit_code: result.exit_code,
-          completion_detected: result.completion_detected
-        )
+        Output::Iteration::Summary.call(@loop, result)
 
         @history.record(
           state_iteration: @state.iteration,
@@ -200,7 +194,7 @@ module Ralph
         @config.current_pid = nil
       end
 
-      Output::IterationError.call(iteration: @loop.state.iteration, error: error)
+      Output::Iteration::Error.call(@loop, error)
 
       @loop.history.record_error(
         state_iteration: @loop.state.iteration,

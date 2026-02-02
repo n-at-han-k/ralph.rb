@@ -82,7 +82,7 @@ module Ralph
               Storage::State.clear
               break
             else
-              Output::IterationHeader.call(self)
+              Output::Iteration::Header.call(self)
 
               Iteration.new(self).run.then do |outcome|
                 if outcome&.complete?
