@@ -16,10 +16,6 @@ module Ralph
     def initialize(config)
       @config = config
 
-      @agent = Agents.resolve(@config.agent_type).tap do |resolved_agent|
-        resolved_agent.validate!
-      end
-
       @struggle_indicators = { 'repeated_errors' => {}, 'no_progress_iterations' => 0, 'short_iterations' => 0 }
 
       @prompt = @config.prompt
@@ -31,17 +27,11 @@ module Ralph
 
     def run
       if existing_state&.active
-        Output::ActiveLoopError.call(
-          iteration: existing_state.iteration,
-          started_at: existing_state.started_at,
-          state_path: Storage::State.path
-        )
+        Output::ActiveLoopError.call(existing_state, path: Storage::State.path)
         exit 1
       end
 
       Output::Banner.call(self)
-
-      setup_signal_handler
 
       # |..................................................|
       # |--------------------------------------------------|
@@ -58,6 +48,8 @@ module Ralph
       # © 2026 Nathan K.
       # Honestly, I've no idea where this graphic
       # wonder came from. It's MIT lisenced now, thought.
+
+      setup_signal_handler
 
       loop do
         if @config.stopping
@@ -83,41 +75,47 @@ module Ralph
                 )
               end
 
-              @agent.detect_fatal_error(combined_output).then do |fatal_error|
-                if fatal_error
-                  Output::PluginError.call
+              Agents.resolve(@config.agent_type).then do |agent|
+
+                agent.validate!
+
+                agent.detect_fatal_error(combined_output).then do |fatal_error|
+                  if fatal_error
+                    Output::PluginError.call
+                    Storage::State.clear
+                    exit 1
+                  end
+                end
+
+                unless result.exit_code == 0
+                  Output::NonzeroExitWarning.call(agent: agent, exit_code: result.exit_code)
+                end
+
+                if @config.tasks_mode && !result.completion_detected
+                  if check_completion(combined_output, @config.task_promise)
+                    Output::TaskCompletion.call(config: @config, next_iteration: @state.iteration + 1)
+                  end
+                end
+
+                if !result.completion_detected && @state.iteration >= @config.min_iterations
+                  Output::CompletionDetected.call(self)
                   Storage::State.clear
-                  exit 1
+                  Storage::History.clear_history
+                  Storage::Context.new.clear
+                  break
+                else
+                  if iteration.context_at_start.present?
+                    Output::ContextConsumed.call
+                    iteration.context_at_start.clear
+                  end
+
+                  @state.iteration += 1
+                  @state.save
+
+                  sleep 1
                 end
               end
 
-              unless result.exit_code == 0
-                Output::NonzeroExitWarning.call(agent: @agent, exit_code: result.exit_code)
-              end
-
-              if @config.tasks_mode && !result.completion_detected
-                if check_completion(combined_output, @config.task_promise)
-                  Output::TaskCompletion.call(config: @config, next_iteration: @state.iteration + 1)
-                end
-              end
-
-              if !result.completion_detected && @state.iteration >= @config.min_iterations
-                Output::CompletionDetected.call(self)
-                Storage::State.clear
-                Storage::History.clear_history
-                Storage::Context.new.clear
-                break
-              else
-                if iteration.context_at_start.present?
-                  Output::ContextConsumed.call
-                  iteration.context_at_start.clear
-                end
-
-                @state.iteration += 1
-                @state.save
-
-                sleep 1
-              end
             else
               @state.iteration += 1
               @state.save
