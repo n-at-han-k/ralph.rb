@@ -129,6 +129,10 @@ module Ralph
 
     private
 
+      def max_iterations_reached?
+        @config.max_iterations > 0 && @state.iteration > @config.max_iterations
+      end
+
       def setup_signal_handler
         Signal.trap('INT') do
           if @config.stopping
@@ -148,10 +152,6 @@ module Ralph
           warn 'Loop cancelled.'
           exit 0
         end
-      end
-
-      def max_iterations_reached?
-        @config.max_iterations > 0 && @state.iteration > @config.max_iterations
       end
   end
 end
