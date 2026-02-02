@@ -9,13 +9,6 @@
 - **Use specs as guidance.** When implementing a feature, follow the design patterns, types, and architecture defined in the relevant spec.
 - **Spec index:** `specs/README.md` lists all specifications organized by category (core, LLM, security, etc.).
 
-## Plans
-
-**IMPORTANT:** Before writing a new plan, read `plans/README.md` for the directory structure and naming conventions.
-
-- **Numbered files.** Plans are numbered sequentially with a 4-digit prefix (e.g. `0001_plan_name.md`).
-- **Next available number.** When creating a new plan, use the next number after the highest existing prefix.
-
 ## Testing
 
 The `bin/` directory contains scripts for verifying code quality:
