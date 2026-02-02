@@ -65,7 +65,7 @@ module Ralph
             started_at: Time.now.utc.iso8601,
 
             model:              config.model,
-            agent:              config.chosen_agent
+            agent:              config.chosen_agent,
             tasks_mode:         config.tasks_mode,
             task_promise:       config.task_promise,
             min_iterations:     config.min_iterations,

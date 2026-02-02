@@ -15,6 +15,7 @@ module Ralph
 
     def initialize(config, state, history, context, tasks)
       @config = config
+      @agent = Agents.resolve(@config.chosen_agent)
       @state = state
       @history = history
       @context = context
@@ -69,16 +70,17 @@ module Ralph
         else
           Output::Iteration::Header.call(self)
 
-          Iteration.new(self).then do |iteration|
-            iteration.run.then do |result|
-              process_result(result, iteration) || break
-            end
+          iteration = Iteration.new(self)
+          result = iteration.run
+          should_continue = process_result(result, iteration)
+
+          if should_continue
+            @state.iteration += 1
+            @state.save
+            sleep 1
+          else
+            break
           end
-
-          @state.iteration += 1
-          @state.save
-
-          sleep 1
         end
       end
     end

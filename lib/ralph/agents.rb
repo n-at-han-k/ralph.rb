@@ -14,9 +14,9 @@ module Ralph
     def resolve(name_str)
       AGENT_NAME_MAP[name_str].then do |sym|
         case sym
-        when :opencode    then OpenCode.new.call
-        when :claude_code then ClaudeCode.new.call
-        when :codex       then Codex.new.call
+        when :opencode    then OpenCode.new
+        when :claude_code then ClaudeCode.new
+        when :codex       then Codex.new
         else nil          end
       end
     end

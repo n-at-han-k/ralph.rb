@@ -155,6 +155,255 @@ class TestLoopBugs < Minitest::Test
   end
 end
 
+# ---------------------------------------------------------------------------
+# Integration tests: stub the agent, run the real loop, assert behavior.
+# ---------------------------------------------------------------------------
+class TestLoopIntegration < Minitest::Test
+  # A stub agent whose execute method returns preconfigured results in order.
+  # Each call to execute pops the next result from the queue.
+  class StubAgent
+    attr_reader :call_count
+
+    def initialize(results)
+      @results = results
+      @call_count = 0
+    end
+
+    def type = :stub
+    def command = "stub"
+    def config_name = "StubAgent"
+    def validate! = nil
+    def parse_tool_output(_line) = nil
+    def collect_tool_counts(_text) = {}
+    def detect_fatal_error(output) = nil
+    def extract_errors(_output) = []
+
+    def execute(_prompt, _options = {})
+      @call_count += 1
+      if @results.is_a?(Array)
+        @results[@call_count - 1] || @results.last
+      else
+        @results
+      end
+    end
+  end
+
+  # A stub agent that detects a fatal error when output contains "FATAL_MARKER"
+  class FatalStubAgent < StubAgent
+    def detect_fatal_error(output)
+      if output.include?("FATAL_MARKER")
+        "Fatal error detected"
+      end
+    end
+  end
+
+  def setup
+    @tmpdir = Dir.mktmpdir("ralph_loop_integration")
+    @original_dir = Dir.pwd
+    Dir.chdir(@tmpdir)
+
+    # Initialize a git repo so Git::FileSnapshot.capture works without errors
+    system("git init -q .")
+    system("git config user.email 'test@test.com'")
+    system("git config user.name 'Test'")
+    File.write("dummy.txt", "hello")
+    system("git add . && git commit -q -m init")
+  end
+
+  def teardown
+    Dir.chdir(@original_dir)
+    FileUtils.rm_rf(@tmpdir)
+  end
+
+  def build_execution_result(stdout: "", stderr: "", exit_code: 0)
+    Ralph::Agents::Base::ExecutionResult.new(
+      stdout_text: stdout,
+      stderr_text: stderr,
+      tool_counts: {},
+      exit_code: exit_code
+    )
+  end
+
+  def build_loop(agent:, completion_promise: "DONE", min_iterations: 1, max_iterations: 0)
+    context = Ralph::Storage::Context.new
+    tasks = Ralph::Storage::Tasks.new
+    prompt = Ralph::PromptTemplate.inject("test task", context: context, tasks: tasks)
+
+    config = Ralph::Config.new(
+      prompt: prompt,
+      completion_promise: completion_promise,
+      min_iterations: min_iterations,
+      max_iterations: max_iterations,
+      chosen_agent: "opencode",
+      stream_output: false,
+      verbose_tools: false,
+      disable_plugins: false,
+      allow_all_permissions: false
+    )
+    state = Ralph::Storage::State.from_config(config, prompt: config.prompt)
+    history = Ralph::Storage::History.new
+
+    loop_instance = Ralph::Loop.new(config, state, history, context, tasks)
+
+    # Replace the resolved agent with our stub
+    loop_instance.instance_variable_set(:@agent, agent)
+
+    # Eliminate sleep calls so tests run instantly
+    loop_instance.define_singleton_method(:sleep) { |_seconds| nil }
+
+    loop_instance
+  end
+
+  # -------------------------------------------------------------------
+  # 1. Loop stops after completion promise is detected
+  # -------------------------------------------------------------------
+  def test_stops_on_completion_detected
+    agent = StubAgent.new(
+      build_execution_result(stdout: "All done! <promise>DONE</promise>")
+    )
+    loop_instance = build_loop(agent: agent)
+
+    capture_io { loop_instance.run }
+
+    assert_equal 1, agent.call_count,
+      "Loop should stop after 1 iteration when completion is detected"
+  end
+
+  # -------------------------------------------------------------------
+  # 2. Loop respects min_iterations — keeps going even if completion
+  #    detected before min_iterations is reached
+  # -------------------------------------------------------------------
+  def test_respects_min_iterations
+    agent = StubAgent.new(
+      build_execution_result(stdout: "Done! <promise>DONE</promise>")
+    )
+    loop_instance = build_loop(agent: agent, min_iterations: 3)
+
+    capture_io { loop_instance.run }
+
+    assert_equal 3, agent.call_count,
+      "Loop should run at least min_iterations even when completion is detected early"
+  end
+
+  # -------------------------------------------------------------------
+  # 3. Loop stops at max_iterations when no completion detected
+  # -------------------------------------------------------------------
+  def test_stops_at_max_iterations
+    agent = StubAgent.new(
+      build_execution_result(stdout: "Still working...")
+    )
+    loop_instance = build_loop(agent: agent, max_iterations: 3)
+
+    capture_io { loop_instance.run }
+
+    assert_equal 3, agent.call_count,
+      "Loop should stop after max_iterations when no completion is detected"
+  end
+
+  # -------------------------------------------------------------------
+  # 4. Loop continues when no completion detected (bounded by max)
+  # -------------------------------------------------------------------
+  def test_continues_without_completion
+    call_outputs = [
+      build_execution_result(stdout: "Working on iteration 1..."),
+      build_execution_result(stdout: "Working on iteration 2..."),
+      build_execution_result(stdout: "Finally! <promise>DONE</promise>")
+    ]
+    agent = StubAgent.new(call_outputs)
+    loop_instance = build_loop(agent: agent)
+
+    capture_io { loop_instance.run }
+
+    assert_equal 3, agent.call_count,
+      "Loop should continue until completion promise is detected"
+  end
+
+  # -------------------------------------------------------------------
+  # 5. Loop stops on fatal error (exits via SystemExit)
+  # -------------------------------------------------------------------
+  def test_stops_on_fatal_error
+    agent = FatalStubAgent.new(
+      build_execution_result(stdout: "FATAL_MARKER something broke badly")
+    )
+    loop_instance = build_loop(agent: agent)
+
+    assert_raises(SystemExit) do
+      capture_io { loop_instance.run }
+    end
+
+    assert_equal 1, agent.call_count,
+      "Loop should stop after 1 iteration on fatal error"
+  end
+
+  # -------------------------------------------------------------------
+  # 6. Non-zero exit code does NOT stop the loop (continues iterating)
+  # -------------------------------------------------------------------
+  def test_nonzero_exit_continues
+    call_outputs = [
+      build_execution_result(stdout: "Something failed", exit_code: 1),
+      build_execution_result(stdout: "Failed again", exit_code: 1),
+      build_execution_result(stdout: "Fixed! <promise>DONE</promise>", exit_code: 0)
+    ]
+    agent = StubAgent.new(call_outputs)
+    loop_instance = build_loop(agent: agent)
+
+    capture_io { loop_instance.run }
+
+    assert_equal 3, agent.call_count,
+      "Loop should continue past non-zero exit codes until completion"
+  end
+
+  # -------------------------------------------------------------------
+  # 7. Completion on exact iteration boundary with min_iterations
+  # -------------------------------------------------------------------
+  def test_completion_on_min_iteration_boundary
+    call_outputs = [
+      build_execution_result(stdout: "Working..."),
+      build_execution_result(stdout: "Still working..."),
+      build_execution_result(stdout: "Done! <promise>DONE</promise>")
+    ]
+    agent = StubAgent.new(call_outputs)
+    loop_instance = build_loop(agent: agent, min_iterations: 3)
+
+    capture_io { loop_instance.run }
+
+    assert_equal 3, agent.call_count,
+      "Loop should stop when completion detected at exactly min_iterations"
+  end
+
+  # -------------------------------------------------------------------
+  # 8. State is cleared after successful completion
+  # -------------------------------------------------------------------
+  def test_state_cleared_after_completion
+    agent = StubAgent.new(
+      build_execution_result(stdout: "<promise>DONE</promise>")
+    )
+    loop_instance = build_loop(agent: agent)
+
+    capture_io { loop_instance.run }
+
+    refute File.exist?(Ralph::Storage::State.path),
+      "State file should be cleared after successful completion"
+  end
+
+  # -------------------------------------------------------------------
+  # 9. State iteration does NOT increment after completion
+  #    (regression: the old bug incremented iteration before breaking)
+  # -------------------------------------------------------------------
+  def test_iteration_not_incremented_after_completion
+    agent = StubAgent.new(
+      build_execution_result(stdout: "<promise>DONE</promise>")
+    )
+    loop_instance = build_loop(agent: agent)
+    state = loop_instance.state
+
+    capture_io { loop_instance.run }
+
+    assert_equal 1, state.iteration,
+      "State iteration should remain at 1 when completion detected on first iteration"
+  end
+end
+
 class TestIterationResult < Minitest::Test
   def test_result_statuses
     assert_equal %i[completed continuing failed fatal error],

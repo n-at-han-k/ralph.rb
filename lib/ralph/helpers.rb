@@ -47,8 +47,8 @@ module Ralph
         remaining = entries.length - shown.length
 
         shown.map { |name, count| "#{name} #{count}" }
-          .then{ |parts| parts << "+#{remaining} more" if remaining > 0 }
-          .then{ |parts| parts.join(" • ") }
+          .tap { |parts| parts << "+#{remaining} more" if remaining > 0 }
+          .then { |parts| parts.join(" • ") }
       end
     end
 

@@ -57,9 +57,9 @@ def build_loop_context(overrides = {})
   history = overrides.delete(:history) || FakeHistory.new(total_duration_ms: 60_000)
   prompt = overrides.delete(:prompt) || FakePrompt.new("test prompt")
   struggle_indicators = overrides.delete(:struggle_indicators) || {
-    "no_progress_iterations" => 0,
-    "short_iterations" => 0,
-    "repeated_errors" => {}
+    no_progress_iterations: 0,
+    short_iterations: 0,
+    repeated_errors: {}
   }
 
   FakeLoopContext.new(
@@ -284,9 +284,9 @@ class TestStruggleWarning < Minitest::Test
   def test_prints_no_progress_warning
     loop_context = build_loop_context(
       struggle_indicators: {
-        "no_progress_iterations" => 5,
-        "short_iterations" => 0,
-        "repeated_errors" => {}
+        no_progress_iterations: 5,
+        short_iterations: 0,
+        repeated_errors: {}
       }
     )
     output = capture_io { Ralph::Output::StruggleWarning.call(loop_context) }[0]
@@ -299,9 +299,9 @@ class TestStruggleWarning < Minitest::Test
   def test_prints_short_iterations_warning
     loop_context = build_loop_context(
       struggle_indicators: {
-        "no_progress_iterations" => 0,
-        "short_iterations" => 4,
-        "repeated_errors" => {}
+        no_progress_iterations: 0,
+        short_iterations: 4,
+        repeated_errors: {}
       }
     )
     output = capture_io { Ralph::Output::StruggleWarning.call(loop_context) }[0]
@@ -313,9 +313,9 @@ class TestStruggleWarning < Minitest::Test
   def test_prints_both_warnings
     loop_context = build_loop_context(
       struggle_indicators: {
-        "no_progress_iterations" => 3,
-        "short_iterations" => 3,
-        "repeated_errors" => {}
+        no_progress_iterations: 3,
+        short_iterations: 3,
+        repeated_errors: {}
       }
     )
     output = capture_io { Ralph::Output::StruggleWarning.call(loop_context) }[0]

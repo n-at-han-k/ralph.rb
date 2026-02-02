@@ -75,9 +75,7 @@ module Ralph
         stream_output:         @config.stream_output,
         disable_plugins:       @config.disable_plugins,
         allow_all_permissions: @config.allow_all_permissions,
-
       ).then do |agent_result|
-
         heartbeat&.stop
 
         if @config.stream_output
@@ -90,35 +88,35 @@ module Ralph
             puts agent_result.stdout_text
           end
         end
-      end
 
-      snapshot_after = Git::FileSnapshot.capture
+        snapshot_after = Git::FileSnapshot.capture
 
-      combined_output = agent_result.combined_output
-      completion_detected = check_completion(combined_output, @config.completion_promise)
-      fatal_error = @agent.detect_fatal_error(combined_output)
+        combined_output = agent_result.combined_output
+        completion_detected = check_completion(combined_output, @config.completion_promise)
+        fatal_error = @agent.detect_fatal_error(combined_output)
 
-      status = (
-        if fatal_error
-          :fatal
-        elsif agent_result.exit_code != 0
-          :failed
-        elsif completion_detected
-          :completed
-        else
-          :continuing
+        status = (
+          if fatal_error
+            :fatal
+          elsif agent_result.exit_code != 0
+            :failed
+          elsif completion_detected
+            :completed
+          else
+            :continuing
+          end
+        )
+
+        Result.new(
+          status: status,
+          agent_result: agent_result,
+          duration_ms: now_ms - iteration_start,
+          files_modified: snapshot_before.modified_since(snapshot_after),
+          completion_detected: completion_detected,
+          errors: @agent.extract_errors(combined_output)
+        ).tap do |result|
+          update_struggle_indicators(result)
         end
-      )
-
-      Result.new(
-        status: status,
-        agent_result: agent_result,
-        duration_ms: now_ms - iteration_start,
-        files_modified: snapshot_before.modified_since(snapshot_after),
-        completion_detected: completion_detected,
-        errors: @agent.extract_errors(combined_output)
-      ).tap do |result|
-        update_struggle_indicators(result)
       end
     rescue StandardError => error
       if @config.current_pid
@@ -152,8 +150,8 @@ module Ralph
     # Returns true when the agent appears to be stuck.
     # Should only be called after iteration > 2 for meaningful results.
     def struggling?
-      @struggle_indicators['no_progress_iterations'] >= 3 ||
-        @struggle_indicators['short_iterations'] >= 3
+      @struggle_indicators[:no_progress_iterations] >= 3 ||
+        @struggle_indicators[:short_iterations] >= 3
     end
 
     private
@@ -162,23 +160,23 @@ module Ralph
 
     def update_struggle_indicators(result)
       if result.files_modified.empty?
-        @struggle_indicators['no_progress_iterations'] += 1
+        @struggle_indicators[:no_progress_iterations] += 1
       else
-        @struggle_indicators['no_progress_iterations'] = 0
+        @struggle_indicators[:no_progress_iterations] = 0
       end
 
       if result.duration_ms < 30_000
-        @struggle_indicators['short_iterations'] += 1
+        @struggle_indicators[:short_iterations] += 1
       else
-        @struggle_indicators['short_iterations'] = 0
+        @struggle_indicators[:short_iterations] = 0
       end
 
       if result.errors.empty?
-        @struggle_indicators['repeated_errors'] = {}
+        @struggle_indicators[:repeated_errors] = {}
       else
         result.errors.each do |error|
           key = error[0, 100]
-          @struggle_indicators['repeated_errors'][key] = (@struggle_indicators['repeated_errors'][key] || 0) + 1
+          @struggle_indicators[:repeated_errors][key] = (@struggle_indicators[:repeated_errors][key] || 0) + 1
         end
       end
     end
