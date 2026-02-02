@@ -3,7 +3,11 @@
 module Ralph
   module Output
     class ConfigSummary
-      def self.call(config:, agent_config:, prompt:)
+      def self.call(loop_context)
+        config = loop_context.config
+        agent = loop_context.agent
+        prompt = loop_context.prompt
+
         prompt_text = prompt.to_s
         prompt_preview = prompt_text.gsub(/\s+/, ' ')[0, 80] + (prompt_text.length > 80 ? '...' : '')
         if prompt.source && !prompt.source.empty?
@@ -19,9 +23,9 @@ module Ralph
         end
         puts "Min iterations: #{config.min_iterations}"
         puts "Max iterations: #{config.max_iterations > 0 ? config.max_iterations : 'unlimited'}"
-        puts "Agent: #{agent_config.config_name}"
+        puts "Agent: #{agent.config_name}"
         puts "Model: #{config.model}" if config.model && !config.model.empty?
-        puts 'OpenCode plugins: non-auth plugins disabled' if config.disable_plugins && agent_config.type == :opencode
+        puts 'OpenCode plugins: non-auth plugins disabled' if config.disable_plugins && agent.type == :opencode
         puts 'Permissions: auto-approve all tools' if config.allow_all_permissions
         puts ''
         puts 'Starting loop... (Ctrl+C to stop)'

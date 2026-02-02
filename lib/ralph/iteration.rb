@@ -39,7 +39,7 @@ module Ralph
     def initialize(loop_context)
       @loop = loop_context
       @config = @loop.config
-      @agent_config = @loop.agent_config
+      @agent = @loop.agent
       @state = @loop.state
       @history = @loop.history
       @struggle_indicators = @loop.struggle_indicators
@@ -58,13 +58,13 @@ module Ralph
       @last_tool_summary_at = 0
     end
 
+    def iteration_start  = @_iteration_start ||= now_ms
+    def context_at_start = @_context_at_start ||= Storage::Context.new
+    def full_prompt      = @_full_promt ||= @loop.prompt.build_iteration(@state, @agent)
+
     # Runs a full iteration: builds prompt, executes agent, records history,
     # emits warnings, and returns an IterationOutcome.
     def run
-      context_at_start = Storage::Context.new
-      iteration_start = now_ms
-      full_prompt = @loop.prompt.build_iteration(@state, @agent_config)
-
       snapshot_before = Git::FileSnapshot.capture
 
       begin
@@ -89,8 +89,7 @@ module Ralph
         check_completion(combined, @config.completion_promise),
         extract_errors(combined),
         exit_code == 0
-      ).tap { |result| update_struggle_indicators(result) }
-       .then do |result|
+      ).tap { |result| update_struggle_indicators(result) }.then do |result|
         Output::IterationSummary.call(
           iteration: @state.iteration,
           elapsed_ms: result.duration_ms,
@@ -108,23 +107,28 @@ module Ralph
 
         combined_output = "#{result.stdout_text}\n#{result.stderr_text}"
 
-        task_completion_detected =
-          if @config.tasks_mode
-            check_completion(combined_output, @config.task_promise)
-          else
-            false
-          end
 
         warn_if_struggling(@state.iteration)
         detect_plugin_error!(combined_output)
         warn_nonzero_exit(result.exit_code)
-        report_task_completion(task_completion_detected, result.completion_detected, @state.iteration)
+
+        if task_completion_detected? && !result.completion_detected
+          Output::TaskCompletion.call(config: @config, next_iteration: @start.iteration + 1)
+        end
 
         IterationOutcome.new(result, context_at_start, @state.iteration, @config.min_iterations)
       end
     rescue StandardError => error
       handle_iteration_error(error, iteration_start || now_ms)
       nil
+    end
+
+    def task_completion_detected?
+      if @config.tasks_mode
+        check_completion(combined_output, @config.task_promise)
+      else
+        false
+      end
     end
 
     # Returns true when the agent appears to be stuck.
@@ -173,7 +177,7 @@ module Ralph
     # ---------- Warnings and error detection ----------
 
     def detect_plugin_error!(combined_output)
-      if @agent_config.type == :opencode && detect_placeholder_plugin_error(combined_output)
+      if @agent.type == :opencode && detect_placeholder_plugin_error(combined_output)
         Output::PluginError.call
         Storage::State.clear
         exit 1
@@ -182,13 +186,7 @@ module Ralph
 
     def warn_nonzero_exit(exit_code)
       unless exit_code == 0
-        Output::NonzeroExitWarning.call(agent_config: @agent_config, exit_code: exit_code)
-      end
-    end
-
-    def report_task_completion(task_completion_detected, completion_detected, iteration_number)
-      if task_completion_detected && !completion_detected
-        Output::TaskCompletion.call(config: @config, next_iteration: iteration_number + 1)
+        Output::NonzeroExitWarning.call(agent: @agent, exit_code: exit_code)
       end
     end
 
@@ -217,13 +215,13 @@ module Ralph
     # ---------- Agent execution ----------
 
     def execute_agent(prompt, iteration_start)
-      command_args = @agent_config.build_args(prompt, @config.model,
+      command_args = @agent.build_args(prompt, @config.model,
                                               { allow_all_permissions: @config.allow_all_permissions })
-      environment = @agent_config.build_env(
+      environment = @agent.build_env(
         filter_plugins: @config.disable_plugins,
         allow_all_permissions: @config.allow_all_permissions
       )
-      command = [@agent_config.command] + command_args
+      command = [@agent.command] + command_args
 
       if @config.stream_output
         stream_agent(command: command, environment: environment, iteration_start: iteration_start)
@@ -271,7 +269,7 @@ module Ralph
 
     def handle_line(line, is_error)
       @mutex.synchronize { @last_activity_at = now_ms }
-      tool = @agent_config.parse_tool_output(line)
+      tool = @agent.parse_tool_output(line)
 
       @mutex.synchronize { @stream_tool_counts[tool] += 1 } if tool
 
@@ -344,7 +342,7 @@ module Ralph
 
     def capture_agent(command:, environment:)
       stdout, stderr, status = Open3.capture3(environment, *command, stdin_data: '')
-      tool_counts = collect_tool_summary_from_text("#{stdout}\n#{stderr}", @agent_config)
+      tool_counts = collect_tool_summary_from_text("#{stdout}\n#{stderr}", @agent)
       StreamResult.new(
         stdout_text: stdout,
         stderr_text: stderr,

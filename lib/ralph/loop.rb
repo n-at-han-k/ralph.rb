@@ -11,11 +11,21 @@ module Ralph
   class Loop
     include ::Ralph::Helpers
 
-    attr_reader :config, :agent_config, :state, :history, :prompt, :struggle_indicators
+    attr_reader :config, :agent, :state, :history, :prompt, :struggle_indicators
 
-    def call(config)
+    def initialize(config)
       @config = config
 
+      @agent = Agents.resolve(@config.agent_type).tap do |resolved_agent|
+        resolved_agent.validate!
+      end
+
+      @struggle_indicators = { 'repeated_errors' => {}, 'no_progress_iterations' => 0, 'short_iterations' => 0 }
+
+      @prompt = @config.prompt
+    end
+
+    def run
       Storage::State.load.then do |existing_state|
         if existing_state&.active
           Output::ActiveLoopError.call(
@@ -25,18 +35,9 @@ module Ralph
           )
           exit 1
         else
-          @agent_config = Agents.resolve(@config.agent_type).tap do |resolved_agent_config|
-            resolved_agent_config.validate!
-          end
+          Output::NoPluginWarning.call(self) if @config.disable_plugins
 
-          # Struggle indicators are shared across iterations
-          @struggle_indicators = { 'repeated_errors' => {}, 'no_progress_iterations' => 0, 'short_iterations' => 0 }
-
-          Output::NoPluginWarning.call(agent_config: @agent_config) if @config.disable_plugins
-
-          Output::Banner.call(agent_config: @agent_config)
-
-          @prompt = @config.prompt
+          Output::Banner.call(self)
 
           @state = Storage::State.from_config(@config, prompt: @prompt).tap(&:save)
 
@@ -53,7 +54,7 @@ module Ralph
 
           @history = Storage::History.new
 
-          Output::ConfigSummary.call(config: @config, agent_config: @agent_config, prompt: @prompt)
+          Output::ConfigSummary.call(self)
 
           setup_signal_handler
 
@@ -77,19 +78,15 @@ module Ralph
             if @config.stopping
               break
             elsif max_iterations_reached?
-              Output::MaxIterationsReached.call(config: @config, total_duration_ms: @history.total_duration_ms)
+              Output::MaxIterationsReached.call(self)
               Storage::State.clear
               break
             else
-              Output::IterationHeader.call(config: @config, iteration: @state.iteration)
+              Output::IterationHeader.call(self)
 
               Iteration.new(self).run.then do |outcome|
                 if outcome&.complete?
-                  Output::CompletionDetected.call(
-                    config: @config,
-                    iteration: @state.iteration,
-                    total_duration_ms: @history.total_duration_ms
-                  )
+                  Output::CompletionDetected.call(self)
                   Storage::State.clear
                   Storage::History.clear_history
                   Storage::Context.new.clear
@@ -140,7 +137,5 @@ module Ralph
       def max_iterations_reached?
         @config.max_iterations > 0 && @state.iteration > @config.max_iterations
       end
-
-
   end
 end

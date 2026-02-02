@@ -4,14 +4,8 @@ module Ralph
   class CLI
     def initialize(**options)
       @config = Config.new(**options)
-    end
 
-    def run(argv = ARGV)
-      # Subcommand state -- set by flags, dispatched after parsing
-      command = nil
-      command_arg = nil
-
-      parser = OptionParser.new do |o|
+      @parser = OptionParser.new do |o|
         o.banner = <<~BANNER
           Ralph Wiggum Loop - Iterative AI development with AI agents
 
@@ -80,38 +74,93 @@ module Ralph
 
         # Subcommands -- these set a command to dispatch after parsing
         o.on("-v", "--version", "Show version") do
-          command = :version
-          command_arg = nil
+          puts "ralph #{VERSION}"
+          exit 0
         end
 
         o.on("--status", "Show current loop status and history") do
-          command = :status
-          command_arg = nil
+          Output::Status.call(options: @config.to_h)
+          exit 0
         end
 
-        o.on("--add-context TEXT", "Add context for the next iteration") do |v|
-          command = :add_context
-          command_arg = v
+        o.on("--add-context TEXT", "Add context for the next iteration") do |context_text|
+
+          Storage::Context.new.append(
+            "\n## Context added at #{Time.now.utc.iso8601}\n#{context_text}\n"
+          )
+
+          puts "✅ Context added for next iteration"
+          puts "   File: #{Storage::Context.new.path}"
+
+          Storage::State.load.then do |state|
+            if state&.active
+              puts "   Will be picked up in iteration #{state.iteration + 1}"
+            else
+              puts "   Will be used when loop starts"
+            end
+          end
+
+          exit 0
         end
 
         o.on("--clear-context", "Clear any pending context") do
-          command = :clear_context
-          command_arg = nil
+          Storage::Context.new.then do |context|
+            if context.present?
+              context.clear
+              puts "✅ Context cleared"
+            else
+              puts "ℹ️  No pending context to clear"
+            end
+          end
+
+          exit 0
         end
 
         o.on("--list-tasks", "Display the current task list") do
-          command = :list_tasks
-          command_arg = nil
+          begin
+            Storage::Tasks.load_tasks.then do |tasks|
+              if tasks
+                tasks.display_with_indices
+              else
+                puts "No tasks file found. Use --add-task to create your first task."
+              end
+            end
+          rescue StandardError => e
+            $stderr.puts "Error reading tasks file: #{e}"
+            exit 1
+          end
+
+          exit 0
         end
 
-        o.on("--add-task DESC", "Add a new task to the list") do |v|
-          command = :add_task
-          command_arg = v
+        o.on("--add-task DESC", "Add a new task to the list") do |description|
+          begin
+            Storage::Tasks.add_task(description)
+            puts "✅ Task added: \"#{description}\""
+          rescue StandardError => e
+            $stderr.puts "Error adding task: #{e}"
+            exit 1
+          end
+
+          exit 0
         end
 
-        o.on("--remove-task N", Integer, "Remove task at index N") do |v|
-          command = :remove_task
-          command_arg = v
+        o.on("--remove-task N", Integer, "Remove task at index N") do |task_index|
+          begin
+            Storage::Tasks.remove_task(task_index)
+            puts "✅ Removed task #{task_index} and its subtasks"
+          rescue IndexError => e
+            $stderr.puts "Error: #{e.message}"
+            exit 1
+          rescue RuntimeError => e
+            $stderr.puts "Error: #{e.message}"
+            exit 1
+          rescue StandardError => e
+            $stderr.puts "Error removing task: #{e}"
+            exit 1
+          end
+
+          exit 0
         end
 
         o.separator ""
@@ -134,133 +183,37 @@ module Ralph
         o.separator "To stop manually: Ctrl+C"
         o.separator "Learn more: https://ghuntley.com/ralph/"
       end
+    end
 
-      parser.parse(argv.dup).then do |prompt_parts|
-        # Skip prompt resolution for subcommands that don't need a prompt
-        unless command
-          begin
-            Prompt.from_parts(prompt_parts, prompt_file: @config.prompt_file).then do |prompt|
-              if prompt.empty?
-                abort "
-                  Error: No prompt provided
-                  Usage: ralph 'Your task description' [options]
-                  Run 'ralph --help' for more information
-                "
-              end
+    def run(argv = ARGV)
+      @parser.parse(argv.dup).then do |prompt_parts|
+        Prompt.from_parts(prompt_parts, prompt_file: @config.prompt_file).then do |prompt|
+          if prompt.empty?
+            abort "
+              Error: No prompt provided
+              Usage: ralph 'Your task description' [options]
+              Run 'ralph --help' for more information
+            "
+          else
+            @config.prompt = prompt
 
-              @config.prompt = prompt
+            if @config.max_iterations > 0 && @config.min_iterations > @config.max_iterations
+              abort "Error: --min-iterations (#{@config.min_iterations}) cannot be greater than --max-iterations (#{@config.max_iterations})"
             end
-          rescue Prompt::Error => e
-            abort e.message
+
+            Ralph::Loop.new(@config).run
           end
         end
       end
 
-      # Dispatch subcommands
-      case command
-      when :version
-        puts "ralph #{VERSION}"
-        exit 0
-      when :status
-        Output::Status.call(options: @config.to_h)
-
-        exit 0
-      when :add_context
-        add_context(command_arg)
-        exit 0
-      when :clear_context
-        clear_context
-        exit 0
-      when :list_tasks
-        list_tasks
-        exit 0
-      when :add_task
-        add_task(command_arg)
-        exit 0
-      when :remove_task
-        remove_task(command_arg)
-        exit 0
-      end
-
-      if @config.max_iterations > 0 && @config.min_iterations > @config.max_iterations
-        abort "Error: --min-iterations (#{@config.min_iterations}) cannot be greater than --max-iterations (#{@config.max_iterations})"
-      end
-
-      Ralph::Loop.new.call(@config)
-
     rescue OptionParser::ParseError => e
       abort "#{e.message}\nRun 'ralph --help' for available options"
-
+    rescue Prompt::Error => e
+      abort e.message
     rescue StandardError => e
       $stderr.puts "Fatal error: #{e}"
       Storage::State.clear
       exit 1
-
     end
-
-    private
-
-      def add_context(context_text)
-        timestamp = Time.now.utc.iso8601
-        new_entry = "\n## Context added at #{timestamp}\n#{context_text}\n"
-        Storage::Context.new.append(new_entry)
-
-        puts "✅ Context added for next iteration"
-        puts "   File: #{Storage::Context.new.path}"
-
-        Storage::State.load.then do |state|
-          if state&.active
-            puts "   Will be picked up in iteration #{state.iteration + 1}"
-          else
-            puts "   Will be used when loop starts"
-          end
-        end
-      end
-
-      def clear_context
-        context = Storage::Context.new
-        if context.present?
-          context.clear
-          puts "✅ Context cleared"
-        else
-          puts "ℹ️  No pending context to clear"
-        end
-      end
-
-      def list_tasks
-        Storage::Tasks.load_tasks.then do |tasks|
-          unless tasks
-            puts "No tasks file found. Use --add-task to create your first task."
-            return
-          end
-
-          tasks.display_with_indices
-        end
-      rescue StandardError => e
-        $stderr.puts "Error reading tasks file: #{e}"
-        exit 1
-      end
-
-      def add_task(description)
-        Storage::Tasks.add_task(description)
-        puts "✅ Task added: \"#{description}\""
-      rescue StandardError => e
-        $stderr.puts "Error adding task: #{e}"
-        exit 1
-      end
-
-      def remove_task(task_index)
-        Storage::Tasks.remove_task(task_index)
-        puts "✅ Removed task #{task_index} and its subtasks"
-      rescue IndexError => e
-        $stderr.puts "Error: #{e.message}"
-        exit 1
-      rescue RuntimeError => e
-        $stderr.puts "Error: #{e.message}"
-        exit 1
-      rescue StandardError => e
-        $stderr.puts "Error removing task: #{e}"
-        exit 1
-      end
   end
 end

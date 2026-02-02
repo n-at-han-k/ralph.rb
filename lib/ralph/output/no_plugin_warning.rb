@@ -1,8 +1,8 @@
 module Ralph
   module Output
     class NoPluginWarning
-      def self.call(agent_config:)
-        case agent_config.type
+      def self.call(loop_context)
+        case loop_context.agent.type
         when :claude_code
           warn 'Warning: --no-plugins has no effect with Claude Code agent'
         when :codex

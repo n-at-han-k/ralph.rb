@@ -7,18 +7,22 @@ $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 require "ralph"
 
 class TestCLIIntegration < Minitest::Test
-  # Stub Loop#call so no LLM requests are made.
-  # Records the options it was called with for assertion.
+  # Stub Loop#initialize and Loop#run so no LLM requests are made.
+  # Records the config passed to initialize for assertion.
   def setup
     @loop_calls = []
     calls = @loop_calls
-    Ralph::Loop.define_method(:call) do |config|
+    Ralph::Loop.define_method(:initialize) do |config|
       calls << config
+    end
+    Ralph::Loop.define_method(:run) do
+      # no-op
     end
   end
 
   def teardown
-    Ralph::Loop.remove_method(:call)
+    Ralph::Loop.undef_method(:run)
+    Ralph::Loop.undef_method(:initialize)
   end
 
   # --- Subcommands (no loop invoked) ---
