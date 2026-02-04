@@ -16,8 +16,19 @@ An iteration object is created which run the agent, and can be cancelled wheneve
 
 In order for the loop to stop once complete, we must instruct the agent to pass back a certain string that we will detect when it thinks it has completed.
 
+### What ends the loop iteration
+- iteration context length
+- iteration duration
+
+### What ends the main loop
+- complete string received
+- max iteration reached
+- loop duration
+
 ## Prompts
 Only prompt needed is to explain to return the string once completed, or perhaps to follow the items on the list. The rest can be passed in by the user.
+
+**important** WE MUST INSTRUCT the agent NOT to interact with the user. All questions must be aswered by reading the spec.
 
 ## Display Output
 

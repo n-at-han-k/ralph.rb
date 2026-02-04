@@ -2,7 +2,7 @@
 
 source "https://rubygems.org"
 
-gemspec
+gemspec name: "ralph.rb"
 
 group :development do
   #gem "minitest", "~> 5.0"
