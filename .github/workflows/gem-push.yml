@@ -1,10 +1,11 @@
 name: Ruby Gem
 
 on:
-  push:
-    branches: ["ruby"]
-  pull_request:
-    branches: ["ruby"]
+  workflow_dispatch: {}
+  #push:
+  #  branches: ["ruby"]
+  #pull_request:
+  #  branches: ["ruby"]
 
 jobs:
   build:
