@@ -1,5 +1,5 @@
 # frozen_string_literal: true
 
 module Ralph
-  VERSION = "1.2.435535439"
+  VERSION = "2.0.0"
 end
