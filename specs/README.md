@@ -29,7 +29,8 @@ Design documentation for Ralph.rb, a Ruby CLI that runs iterative AI development
 
 | Spec | Code | Purpose |
 |------|------|---------|
-| [cli.md](./cli.md) | [exe/ralph](../exe/ralph) | Command-line interface specification for interacting with ralph |
-| [loop.md](./loop.md) | — | Core loop architecture and iteration management |
-| [agents.md](./agents.md) | — | Integration with opencode agents and JSON streaming |
-| [metrics.md](./metrics.md) | — | Context and token usage calculation from JSON streams |
+| [cli.md](./cli.md) | [exe/ralph](../exe/ralph) | Command-line interface and subcommands (build, plan) |
+| [loop.md](./loop.md) | [lib/ralph/loop.rb](../lib/ralph/loop.rb) | Core loop architecture and iteration management |
+| [prompts.md](./prompts.md) | — | Prompt templates for planning and building modes |
+| [agents.md](./agents.md) | [lib/ralph/opencode.rb](../lib/ralph/opencode.rb) | Integration with opencode agents and JSON streaming |
+| [metrics.md](./metrics.md) | [lib/ralph/metrics.rb](../lib/ralph/metrics.rb) | Context and token usage calculation from JSON streams |
