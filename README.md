@@ -1,10 +1,10 @@
 <p align="center">
-  <h1 align="center">Open Ralph Wiggum</h1>
-  <h3 align="center">Autonomous Agentic Loop for Claude Code, Codex & OpenCode</h3>
+  <h1 align="center">Ralph.rb</h1>
+  <h3 align="center">Autonomous Agentic Loop for OpenCode</h3>
 </p>
 
 <p align="center">
-  <img src="screenshot.webp" alt="Open Ralph Wiggum - Iterative AI coding loop for Claude Code and Codex" />
+  <img src="ralph.jpg" alt="Ralph Wiggum - Iterative AI coding loop for Opencode" />
 </p>
 
 <p align="center">
@@ -13,11 +13,6 @@
   <em>Based on the <a href="https://ghuntley.com/ralph/">Ralph Wiggum technique</a> by Geoffrey Huntley</em>
 </p>
 
-<p align="center">
-  <a href="https://github.com/Th0rgal/ralph-wiggum/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <a href="https://github.com/Th0rgal/ralph-wiggum"><img src="https://img.shields.io/badge/built%20with-Bun%20%2B%20TypeScript-f472b6.svg" alt="Built with Bun + TypeScript"></a>
-  <a href="https://github.com/Th0rgal/ralph-wiggum/releases"><img src="https://img.shields.io/github/v/release/Th0rgal/ralph-wiggum?include_prereleases" alt="Release"></a>
-</p>
 
 <p align="center">
   <a href="#supported-agents">Supported Agents</a> •
