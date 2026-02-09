@@ -13,8 +13,13 @@ This is the master plan that coordinates all individual component implementation
 ## Phase 2: Core Infrastructure (Parallel Development)
 - [ ] **CLI Implementation** (Plan 01)
   - [ ] Basic executable and argument parsing
+  - [ ] Subcommand routing (build/plan)
   - [ ] Option validation and error handling
   - [ ] Unix pipe support implementation
+- [ ] **Prompts Foundation** (Plan 05)
+  - [ ] Prompt::Build and Prompt::Plan classes
+  - [ ] Signal string management (task-done, all-done)
+  - [ ] User context injection and placeholder substitution
 - [ ] **Metrics Foundation** (Plan 04)  
   - [ ] Event parsing infrastructure
   - [ ] JSON stream processing
@@ -30,6 +35,8 @@ This is the master plan that coordinates all individual component implementation
   - [ ] Iteration management system
   - [ ] Context guard implementation
 - [ ] **Component Integration**
+  - [ ] CLI → Prompts interface for subcommand routing
+  - [ ] Prompts → Loop interface for prompt objects and signal strings
   - [ ] Metrics → Loop interface for context monitoring
   - [ ] Loop → Agents interface for iteration control
   - [ ] CLI → Loop interface for parameter passing
@@ -44,7 +51,8 @@ This is the master plan that coordinates all individual component implementation
   - [ ] Threshold-based alerting
   - [ ] Historical data tracking
 - [ ] **Loop Termination Logic**
-  - [ ] Completion string detection
+  - [ ] Task-done signal detection (build mode: end iteration, start fresh)
+  - [ ] All-done signal detection (both modes: stop the loop)
   - [ ] Time and iteration limits
   - [ ] Context-based cancellation
 
@@ -85,7 +93,7 @@ This is the master plan that coordinates all individual component implementation
 - [ ] Resource cleanup and garbage collection
 
 ## Critical Success Criteria
-- [ ] All four component plans completed successfully
+- [ ] All five component plans completed successfully
 - [ ] Integration between components works seamlessly
 - [ ] Real-time monitoring meets performance requirements
 - [ ] Unix philosophy and CLI design principles followed

@@ -4,21 +4,15 @@ module Ralph
   # The core iteration engine. Runs opencode in a loop, restarting fresh
   # iterations whenever context grows too large or time limits are hit.
   # The loop ends when:
-  #   - the agent emits the completion string
+  #   - the agent emits the all-done completion string
   #   - max iterations are reached
   #   - total duration is exceeded
+  #
+  # An iteration ends early (and a fresh one begins) when:
+  #   - the agent emits the task-done string (build mode only)
+  #   - context limit is exceeded
   class Loop
-    SYSTEM_PROMPT = <<~PROMPT
-      You are working autonomously in a loop. IMPORTANT RULES:
-      1. Do NOT ask the user any questions. Do NOT wait for user input.
-         If you need information, read the specs, code, or docs yourself.
-      2. Work through the task methodically. Use the todo list to track progress.
-      3. When you have FULLY completed the task, you MUST output the exact
-         completion string on its own line: %<completion>s
-      4. Do not output the completion string until ALL work is truly done.
-    PROMPT
-
-    attr_reader :metrics, :iteration_number, :completed
+    attr_reader :metrics, :iteration_number, :completed, :iteration_outcomes
 
     def initialize(options)
       @prompt = options[:prompt]
@@ -26,10 +20,12 @@ module Ralph
       @max_iterations = options[:max_iterations]
       @duration_limit = options[:duration]
       @max_context = options[:max_context]
-      @completion_string = options[:completion] || "<promise>COMPLETE</promise>"
+      @all_done_string = resolve_all_done_string(options)
+      @task_done_string = resolve_task_done_string
       @metrics = Metrics.new
       @iteration_number = 0
       @completed = false
+      @iteration_outcomes = []
       @started_at = nil
       @display = Display.new(self)
     end
@@ -37,7 +33,7 @@ module Ralph
     # Run the main loop until a termination condition is met.
     def run
       @started_at = now_seconds
-      @display.show_start(@prompt)
+      @display.show_start(prompt_text)
 
       loop do
         break if should_stop_loop?
@@ -46,9 +42,14 @@ module Ralph
         @metrics.new_iteration
         @display.show_iteration_start
 
-        run_iteration
+        iteration = run_iteration
 
+        @iteration_outcomes << { number: iteration.number, outcome: iteration.outcome }
         @display.show_iteration_end
+
+        if iteration.all_done?
+          @completed = true
+        end
       end
 
       @display.show_summary
@@ -66,13 +67,39 @@ module Ralph
 
     private
 
+    # Read all-done string from the prompt object if it responds to it,
+    # falling back to the CLI --completion option or the default.
+    def resolve_all_done_string(options)
+      if options[:completion]
+        options[:completion]
+      elsif @prompt.respond_to?(:all_done) && @prompt.all_done
+        @prompt.all_done
+      else
+        Prompt::Build::DEFAULT_ALL_DONE
+      end
+    end
+
+    # Read task-done string from the prompt object. Plan prompts return nil,
+    # meaning the loop will not watch for task-done signals.
+    def resolve_task_done_string
+      if @prompt.respond_to?(:task_done)
+        @prompt.task_done
+      else
+        nil
+      end
+    end
+
+    def prompt_text
+      @prompt.to_s
+    end
+
     def should_stop_loop?
       if @completed
         true
       elsif @max_iterations && @iteration_number >= @max_iterations
         @display.show_termination("max iterations reached (#{@max_iterations})")
         true
-      elsif @duration_limit && elapsed_seconds >= @duration_limit
+      elsif duration_exceeded?
         @display.show_termination("duration limit reached (#{@duration_limit}s)")
         true
       else
@@ -81,55 +108,26 @@ module Ralph
     end
 
     def run_iteration
-      iteration_started_at = now_seconds
-      agent = Opencode.new(model: @model)
-      full_prompt = build_prompt
+      iteration = Iteration.new(
+        number: @iteration_number,
+        prompt_text: prompt_text,
+        model: @model,
+        task_done_string: @task_done_string,
+        all_done_string: @all_done_string,
+        metrics: @metrics,
+        display: @display
+      )
 
-      agent.run(full_prompt) do |event|
-        @metrics.process(event)
-        @display.show_event(event)
+      iteration.run(
+        max_context: @max_context,
+        duration_exceeded: -> { duration_exceeded? }
+      )
 
-        if event.is_a?(Events::Text)
-          check_completion(event.text)
-        end
-
-        if should_cancel_iteration?(iteration_started_at)
-          @display.show_iteration_cancelled(cancel_reason(iteration_started_at))
-          agent.cancel
-          break
-        end
-      end
+      iteration
     end
 
-    def should_cancel_iteration?(iteration_started_at)
-      if @max_context && @metrics.current_context >= @max_context
-        true
-      elsif @duration_limit && elapsed_seconds >= @duration_limit
-        true
-      else
-        false
-      end
-    end
-
-    def cancel_reason(iteration_started_at)
-      if @max_context && @metrics.current_context >= @max_context
-        "context limit reached (#{@metrics.current_context}/#{@max_context})"
-      elsif @duration_limit && elapsed_seconds >= @duration_limit
-        "duration limit reached"
-      else
-        "unknown"
-      end
-    end
-
-    def check_completion(text)
-      if text && text.include?(@completion_string)
-        @completed = true
-      end
-    end
-
-    def build_prompt
-      system_instructions = format(SYSTEM_PROMPT, completion: @completion_string)
-      "#{system_instructions}\n\n---\n\n#{@prompt}"
+    def duration_exceeded?
+      @duration_limit && elapsed_seconds >= @duration_limit
     end
 
     def now_seconds

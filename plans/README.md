@@ -19,20 +19,25 @@ This directory contains comprehensive phased implementation plans for building R
 ### [04-metrics-implementation.md](./04-metrics-implementation.md)
 **Metrics Component** - Implements real-time token usage and context calculation from JSON streams.
 
+### [05-prompts-implementation.md](./05-prompts-implementation.md)
+**Prompts Component** - Implements `Prompt::Build` and `Prompt::Plan` template classes with signal strings and user context injection.
+
 ## Implementation Strategy
 
 1. **Foundation First** - Start with the complete implementation plan for project setup
-2. **Parallel Development** - CLI, Metrics, and Agents foundations can be developed simultaneously
-3. **Integration Focus** - Loop implementation depends on the other three components
+2. **Parallel Development** - CLI, Metrics, Agents, and Prompts foundations can be developed simultaneously
+3. **Integration Focus** - Loop implementation depends on the other components
 4. **Quality Gates** - Each phase includes verification criteria and testing requirements
 
 ## Key Dependencies
 
 ```
-CLI → Loop → Agents → Metrics → CLI (for display)
+CLI → Prompts → Loop → Agents → Metrics → CLI (for display)
 ```
 
+- CLI requires Prompts for subcommand-to-prompt routing
 - CLI requires Loop for execution
+- Loop requires Prompts for prompt objects and signal strings
 - Loop requires Agents for iteration execution  
 - Loop requires Metrics for context monitoring
 - Metrics requires Agents for JSON stream input

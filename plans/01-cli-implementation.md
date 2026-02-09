@@ -9,38 +9,49 @@ This plan outlines the phased implementation of the Ralph.rb command-line interf
 - [ ] Add basic help/version output functionality
 - [ ] Set up project structure with lib/ directory and main.rb entry point
 
-## Phase 2: Command Line Options Implementation
-- [ ] Implement `--model` option for model selection validation
-- [ ] Add `--max-iterations` parameter with integer validation
-- [ ] Implement `--duration` option with time parsing (seconds/minutes)
-- [ ] Add `--max-context` option with integer validation
-- [ ] Implement `--completion` option for completion string detection
-- [ ] Add validation for required vs optional parameters
+## Phase 2: Subcommand Routing
+- [ ] Implement `build` subcommand as the default when no subcommand is given
+- [ ] Implement `plan` subcommand for gap analysis and plan generation
+- [ ] Route subcommand to the correct prompt class (`Prompt::Build` or `Prompt::Plan`)
+- [ ] Handle bare `ralph` invocation as equivalent to `ralph build`
+- [ ] Handle bare `ralph --max-iterations=10` as equivalent to `ralph build --max-iterations=10`
 
-## Phase 3: Input Processing and Validation
+## Phase 3: Command Line Options Implementation
+- [ ] Implement `--model=MODEL` option for model selection
+- [ ] Add `--max-iterations=N` parameter with integer validation
+- [ ] Implement `--duration=SECONDS` option with integer validation
+- [ ] Add `--max-context=N` option with integer validation
+- [ ] Implement `--completion=STRING` option for completion string override
+- [ ] Add `-h, --help` and `-v, --version` flags
+- [ ] Ensure all options work with both `build` and `plan` subcommands
+
+## Phase 4: Input Processing and Validation
 - [ ] Implement stdin reading with proper encoding handling
-- [ ] Create input validation for prompt files vs inline prompts
+- [ ] Combine positional arguments as user context text
+- [ ] Pass stdin/positional text as `context:` to `Prompt::Build` or `goal:` to `Prompt::Plan`
 - [ ] Add error handling for malformed input or missing files
-- [ ] Implement argument combination logic (stdin + args)
 - [ ] Add debug mode for troubleshooting input processing
 
-## Phase 4: Integration Preparation
-- [ ] Create interface stubs for Loop, Agent, and Metrics components
-- [ ] Implement parameter passing to core loop system
-- [ ] Add configuration management and defaults
+## Phase 5: Integration Preparation
+- [ ] Instantiate the correct Prompt object based on subcommand and pass options
+- [ ] Pass prompt object and CLI options to Loop for execution
 - [ ] Create error handling and user-friendly error messages
-- [ ] Implement logging/verbosity levels if needed
+- [ ] Implement parameter defaults and validation
 
-## Phase 5: Testing and Validation
+## Phase 6: Testing and Validation
 - [ ] Write unit tests for CLI argument parsing
-- [ ] Test pipe functionality with various input sources
+- [ ] Test subcommand routing (build default, plan explicit)
+- [ ] Test pipe functionality with various input sources (`cat file | ralph build`)
 - [ ] Validate error handling for invalid inputs
-- [ ] Test integration with other components (mock versions)
+- [ ] Test integration with Prompt and Loop components (mock versions)
 - [ ] Add integration tests for complete CLI workflow
 
 ## Verification Criteria
+- [ ] `ralph build` and `ralph` are equivalent
+- [ ] `ralph plan "goal"` routes to `Prompt::Plan` with goal text
 - [ ] CLI accepts all specified options with proper validation
-- [ ] Unix pipe functionality works correctly (`cat file | ralph`)
+- [ ] Unix pipe functionality works correctly (`cat file | ralph build`)
+- [ ] Positional text and stdin are passed as user context to the prompt
 - [ ] Error messages are clear and helpful
 - [ ] All options pass parameters correctly to core system
 - [ ] Help documentation is comprehensive and accurate
@@ -48,6 +59,7 @@ This plan outlines the phased implementation of the Ralph.rb command-line interf
 - [ ] All tests pass (run `bin/test`)
 
 ## Dependencies
-- Requires Loop, Agents, and Metrics components to be implemented
+- Requires Prompt component for `Prompt::Build` and `Prompt::Plan` classes
+- Requires Loop, Agents, and Metrics components for execution
 - Needs Ruby OptionParser or equivalent for argument handling
-- Integration with opencil CLI for agent execution
+- Integration with opencode CLI for agent execution

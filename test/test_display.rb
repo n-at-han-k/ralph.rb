@@ -37,7 +37,8 @@ class TestDisplay < Minitest::Test
   end
 
   def test_show_start_outputs_prompt
-    loop_engine = Ralph::Loop.new(prompt: "test prompt")
+    prompt = Ralph::Prompt::Build.new(context: "test prompt")
+    loop_engine = Ralph::Loop.new(prompt: prompt)
     display = Ralph::Display.new(loop_engine)
 
     output = capture_io { display.show_start("test prompt") }.first
@@ -47,7 +48,8 @@ class TestDisplay < Minitest::Test
   end
 
   def test_show_summary_outputs_status
-    loop_engine = Ralph::Loop.new(prompt: "test prompt")
+    prompt = Ralph::Prompt::Build.new
+    loop_engine = Ralph::Loop.new(prompt: prompt)
     display = Ralph::Display.new(loop_engine)
 
     output = capture_io { display.show_summary }.first
@@ -55,5 +57,14 @@ class TestDisplay < Minitest::Test
     assert_includes output, "SUMMARY"
     assert_includes output, "TERMINATED"
     assert_includes output, "Iterations:"
+  end
+
+  def test_show_iteration_error_outputs_message
+    display = Ralph::Display.new(nil)
+
+    output = capture_io { display.show_iteration_error("agent crashed") }.first
+
+    assert_includes output, "Iteration error"
+    assert_includes output, "agent crashed"
   end
 end

@@ -60,6 +60,11 @@ module Ralph
       puts "  ** Iteration cancelled: #{reason}"
     end
 
+    def show_iteration_error(message)
+      puts
+      puts "  ** Iteration error: #{message}"
+    end
+
     def show_termination(reason)
       puts
       puts "  ** Loop terminated: #{reason}"
